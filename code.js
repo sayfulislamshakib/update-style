@@ -63,7 +63,7 @@ const DEFAULT_CATALOG = [
 ];
 
 // ==========================================
-// 2. FAST SCORING & MATCHING ENGINE
+// 2. FONT WEIGHT & SCORING HELPERS
 // ==========================================
 const FONT_WEIGHT_MAP = {
   thin: 100,
@@ -74,6 +74,8 @@ const FONT_WEIGHT_MAP = {
   normal: 400,
   regular: 400,
   book: 400,
+  plain: 400,
+  roman: 400,
   medium: 500,
   semibold: 600,
   demibold: 600,
@@ -82,17 +84,29 @@ const FONT_WEIGHT_MAP = {
   ultrabold: 800,
   black: 900,
   heavy: 900,
+  extrablack: 950,
+  fat: 950,
+  poster: 950,
 };
 
+const SORTED_WEIGHT_KEYS = Object.keys(FONT_WEIGHT_MAP).sort((a, b) => b.length - a.length);
 const weightCache = new Map();
+
 function parseFontWeight(styleName) {
-  const normalized = (styleName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!styleName) return 400;
+  const str = String(styleName).toLowerCase();
+
+  // Check explicit numeric weight (e.g., "500", "w600", "weight-700")
+  const numMatch = str.match(/\b(100|200|300|400|500|600|700|800|900|950)\b/);
+  if (numMatch) return parseInt(numMatch[1], 10);
+
+  const normalized = str.replace(/[^a-z0-9]/g, "");
   if (weightCache.has(normalized)) return weightCache.get(normalized);
 
   let result = 400;
-  for (const [key, weight] of Object.entries(FONT_WEIGHT_MAP)) {
+  for (const key of SORTED_WEIGHT_KEYS) {
     if (normalized.includes(key)) {
-      result = weight;
+      result = FONT_WEIGHT_MAP[key];
       break;
     }
   }
@@ -104,53 +118,272 @@ function resolveLineHeightPixels(lineHeight, fontSize) {
   if (!lineHeight) return fontSize * 1.2;
   if (lineHeight.unit === "PIXELS") return lineHeight.value;
   if (lineHeight.unit === "PERCENT") return (fontSize * lineHeight.value) / 100;
+  if (lineHeight.unit === "AUTO") return fontSize * 1.2;
   return fontSize * 1.2;
 }
 
+function normalizeStyleName(name) {
+  if (!name) return "";
+  return String(name)
+    .toLowerCase()
+    .replace(/[\/\\_\-\.:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getLeafStyleName(name) {
+  if (!name) return "";
+  const parts = String(name).split(/[\/\\]/);
+  return parts[parts.length - 1].trim();
+}
+
+function extractNameTokens(name) {
+  if (!name) return [];
+  const normalized = normalizeStyleName(name);
+  return normalized.split(" ").filter((t) => t.length > 1);
+}
+
+// Category synonyms mapping
+const CATEGORY_MAP = {
+  h1: "h1",
+  h2: "h2",
+  h3: "h3",
+  h4: "h4",
+  h5: "h5",
+  h6: "h6",
+  heading: "heading",
+  headings: "heading",
+  header: "heading",
+  headers: "heading",
+  headline: "heading",
+  display: "display",
+  hero: "display",
+  banner: "display",
+  title: "title",
+  titles: "title",
+  subtitle: "subtitle",
+  subheading: "subtitle",
+  subhead: "subtitle",
+  body: "body",
+  paragraph: "body",
+  copy: "body",
+  text: "body",
+  para: "body",
+  content: "body",
+  caption: "caption",
+  footnote: "caption",
+  fineprint: "caption",
+  micro: "caption",
+  button: "button",
+  btn: "button",
+  cta: "button",
+  label: "label",
+  badge: "label",
+  tag: "label",
+  chip: "label",
+  code: "code",
+  mono: "code",
+  quote: "quote",
+  lead: "lead",
+  overline: "overline",
+  small: "small",
+};
+
+function getStyleCategoryOrRoot(name) {
+  if (!name) return "";
+  const tokens = extractNameTokens(name);
+
+  // Check specific keywords first (e.g. "h1", "body", "title")
+  for (const token of tokens) {
+    if (CATEGORY_MAP[token]) {
+      return CATEGORY_MAP[token];
+    }
+  }
+
+  // Fallback: check substrings in tokens
+  for (const token of tokens) {
+    for (const [kw, cat] of Object.entries(CATEGORY_MAP)) {
+      if (token.includes(kw)) {
+        return cat;
+      }
+    }
+  }
+
+  const parts = String(name).split(/[\/\\]/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    return parts[0].toLowerCase();
+  }
+  return "";
+}
+
+// ==========================================
+// 3. PRECISION SCORING ENGINE
+// ==========================================
 function calculateMatchScore(source, candidate) {
-  const sizeDiff = Math.abs(source.fontSize - candidate.fontSize);
-  const sizePenalty = Math.pow(sizeDiff, 1.5) * 10;
+  const srcSize = source.fontSize || 16;
+  const candSize = candidate.fontSize || 16;
+  const sizeDiff = Math.abs(srcSize - candSize);
+  const sizePenalty = Math.pow(sizeDiff, 1.4) * 12;
 
-  const sourceWeight = parseFontWeight(source.fontName.style);
-  const candidateWeight = parseFontWeight(candidate.fontName.style);
+  const sourceWeight = parseFontWeight(source.fontName ? source.fontName.style : "");
+  const candidateWeight = parseFontWeight(candidate.fontName ? candidate.fontName.style : "");
   const weightDiff = Math.abs(sourceWeight - candidateWeight) / 100;
-  const weightPenalty = weightDiff * 15;
+  const weightPenalty = weightDiff * 16;
 
-  const srcLhPx = resolveLineHeightPixels(source.lineHeight, source.fontSize);
-  const candLhPx = resolveLineHeightPixels(candidate.lineHeight, candidate.fontSize);
+  const srcLhPx = resolveLineHeightPixels(source.lineHeight, srcSize);
+  const candLhPx = resolveLineHeightPixels(candidate.lineHeight, candSize);
   const lhDiff = Math.abs(srcLhPx - candLhPx);
-  const lhPenalty = lhDiff * 2;
+  const lhPenalty = lhDiff > 1.5 ? lhDiff * 1.5 : 0;
 
-  const isSameFamily =
-    (source.fontName.family || "").toLowerCase() === (candidate.fontName.family || "").toLowerCase();
-  const familyPenalty = isSameFamily ? 0 : 25;
+  const srcFamily = source.fontName ? (source.fontName.family || "").toLowerCase() : "";
+  const candFamily = candidate.fontName ? (candidate.fontName.family || "").toLowerCase() : "";
+  const isSameFamily = srcFamily.length > 0 && candFamily.length > 0 && srcFamily === candFamily;
+  const familyPenalty = isSameFamily ? 0 : 20;
 
-  const srcIsItalic = /italic|oblique/i.test(source.fontName.style || "");
-  const candIsItalic = /italic|oblique/i.test(candidate.fontName.style || "");
+  const srcIsItalic = /italic|oblique/i.test(source.fontName ? source.fontName.style || "" : "");
+  const candIsItalic = /italic|oblique/i.test(candidate.fontName ? candidate.fontName.style || "" : "");
   const italicPenalty = srcIsItalic === candIsItalic ? 0 : 20;
 
   return sizePenalty + weightPenalty + lhPenalty + familyPenalty + italicPenalty;
 }
 
-function findClosestStyle(source, catalog) {
-  let bestMatch = catalog[0];
+function findClosestInCandidates(sourceSpec, candidateList) {
+  if (!candidateList || candidateList.length === 0) return null;
+
+  let bestMatch = candidateList[0];
   let lowestScore = Infinity;
 
-  for (let i = 0; i < catalog.length; i++) {
-    const candidate = catalog[i];
-    const score = calculateMatchScore(source, candidate);
+  const existingStyle = sourceSpec.existingStyle;
+  const layerName = sourceSpec.layerName;
+
+  for (let i = 0; i < candidateList.length; i++) {
+    const candidate = candidateList[i];
+    let score = calculateMatchScore(sourceSpec, candidate);
+
+    // Name affinity bonus if partial name matches
+    if (existingStyle && existingStyle.name && candidate.name) {
+      const candNorm = normalizeStyleName(candidate.name);
+      const existNorm = normalizeStyleName(existingStyle.name);
+      if (candNorm.includes(existNorm) || existNorm.includes(candNorm)) {
+        score -= 15;
+      }
+    } else if (layerName && candidate.name) {
+      const candNorm = normalizeStyleName(candidate.name);
+      const layerNorm = normalizeStyleName(layerName);
+      if (candNorm.includes(layerNorm) || layerNorm.includes(candNorm)) {
+        score -= 8;
+      }
+    }
+
     if (score < lowestScore) {
       lowestScore = score;
       bestMatch = candidate;
-      if (score === 0) break;
     }
   }
 
   return bestMatch;
 }
 
+function findBestMatchingStyle(sourceSpec, catalog) {
+  if (!catalog || catalog.length === 0) return null;
+
+  const existingStyle = sourceSpec.existingStyle;
+  const layerName = sourceSpec.layerName;
+
+  // 1. Direct Key or ID Match with Existing Style
+  if (existingStyle) {
+    if (existingStyle.key) {
+      const matchByKey = catalog.find((c) => c.key && c.key === existingStyle.key);
+      if (matchByKey) return matchByKey;
+    }
+    if (existingStyle.id) {
+      const matchById = catalog.find((c) => c.id && c.id === existingStyle.id);
+      if (matchById) return matchById;
+    }
+
+    // 2. Exact or Normalized Full Name Match
+    if (existingStyle.name) {
+      const existingNameLower = existingStyle.name.toLowerCase().trim();
+      const matchByName = catalog.find((c) => c.name && c.name.toLowerCase().trim() === existingNameLower);
+      if (matchByName) return matchByName;
+
+      const normExisting = normalizeStyleName(existingStyle.name);
+      const matchByNorm = catalog.find((c) => c.name && normalizeStyleName(c.name) === normExisting);
+      if (matchByNorm) return matchByNorm;
+
+      const leafExisting = normalizeStyleName(getLeafStyleName(existingStyle.name));
+      if (leafExisting && leafExisting.length > 2) {
+        const leafMatches = catalog.filter(
+          (c) => c.name && normalizeStyleName(getLeafStyleName(c.name)) === leafExisting
+        );
+        if (leafMatches.length === 1) {
+          return leafMatches[0];
+        } else if (leafMatches.length > 1) {
+          return findClosestInCandidates(sourceSpec, leafMatches);
+        }
+      }
+    }
+
+    // 3. Category Match for Existing Style (e.g. text is "Body", find available "Body" styles)
+    if (existingStyle.name) {
+      const existingCat = getStyleCategoryOrRoot(existingStyle.name);
+      if (existingCat) {
+        const sameCategoryCandidates = catalog.filter((c) => {
+          if (!c.name) return false;
+          const candCat = getStyleCategoryOrRoot(c.name);
+          return candCat === existingCat || normalizeStyleName(c.name).includes(existingCat);
+        });
+
+        if (sameCategoryCandidates.length > 0) {
+          const bestCatMatch = findClosestInCandidates(sourceSpec, sameCategoryCandidates);
+          if (bestCatMatch) {
+            const catScore = calculateMatchScore(sourceSpec, bestCatMatch);
+            // If reasonable match within category, return it
+            if (catScore < 100) return bestCatMatch;
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Layer Name Match (e.g. "body-text", "title-text", "Heading 1")
+  if (layerName && typeof layerName === "string" && layerName.trim().length > 0) {
+    const trimmedLayerName = layerName.trim();
+    const layerNameLower = trimmedLayerName.toLowerCase();
+
+    // Exact layer name match
+    const matchByLayerName = catalog.find((c) => c.name && c.name.toLowerCase().trim() === layerNameLower);
+    if (matchByLayerName) return matchByLayerName;
+
+    const normLayerName = normalizeStyleName(trimmedLayerName);
+    const matchByNormLayer = catalog.find((c) => c.name && normalizeStyleName(c.name) === normLayerName);
+    if (matchByNormLayer) return matchByNormLayer;
+
+    // Category match from layer name
+    const layerCat = getStyleCategoryOrRoot(trimmedLayerName);
+    if (layerCat) {
+      const sameLayerCatCandidates = catalog.filter((c) => {
+        if (!c.name) return false;
+        const candCat = getStyleCategoryOrRoot(c.name);
+        return candCat === layerCat || normalizeStyleName(c.name).includes(layerCat);
+      });
+
+      if (sameLayerCatCandidates.length > 0) {
+        const bestLayerCatMatch = findClosestInCandidates(sourceSpec, sameLayerCatCandidates);
+        if (bestLayerCatMatch) {
+          const layerScore = calculateMatchScore(sourceSpec, bestLayerCatMatch);
+          if (layerScore < 100) return bestLayerCatMatch;
+        }
+      }
+    }
+  }
+
+  // 5. Fallback: Find closest match across entire catalog
+  return findClosestInCandidates(sourceSpec, catalog);
+}
+
 // ==========================================
-// 3. HIGH-SPEED ASYNC DISCOVERY & CACHE
+// 4. HIGH-SPEED ASYNC DISCOVERY & CACHE
 // ==========================================
 const globalLoadedFonts = new Set();
 const globalStyleCache = new Map();
@@ -176,6 +409,7 @@ async function getStyleSafe(id) {
     if (style && style.type === "TEXT") {
       globalStyleCache.set(id, style);
       if (style.key) globalStyleCache.set(style.key, style);
+      if (style.name) globalStyleCache.set(`name__${style.name.toLowerCase()}`, style);
       return style;
     }
   } catch (_) {}
@@ -215,6 +449,7 @@ async function discoverAllStyles(forceRefresh = false) {
       const key = s.key || s.id;
       globalStyleCache.set(s.id, s);
       if (s.key) globalStyleCache.set(s.key, s);
+      if (s.name) globalStyleCache.set(`name__${s.name.toLowerCase()}`, s);
       stylesMap.set(key, {
         name: s.name,
         key: s.key,
@@ -230,28 +465,41 @@ async function discoverAllStyles(forceRefresh = false) {
     console.warn("[discoverAllStyles] Error loading local styles:", err);
   }
 
-  // 2. Remote styles from selection/page
+  // 2. Remote styles across page & selection
   try {
-    const targetNodes =
-      figma.currentPage.selection.length > 0
-        ? figma.currentPage.selection
-        : figma.currentPage.children;
-
     const inspectedStyleIds = new Set();
 
     function extractStyleIds(node, depth = 0) {
-      if (depth > 6) return;
-      if (node.type === "TEXT" && typeof node.textStyleId === "string" && node.textStyleId.length > 0) {
-        inspectedStyleIds.add(node.textStyleId);
+      if (depth > 50) return;
+      if (node.type === "TEXT") {
+        if (typeof node.textStyleId === "string" && node.textStyleId.length > 0) {
+          inspectedStyleIds.add(node.textStyleId);
+        } else if (node.textStyleId === figma.mixed) {
+          try {
+            const segments = node.getStyledTextSegments(["textStyleId"]);
+            for (const seg of segments) {
+              if (typeof seg.textStyleId === "string" && seg.textStyleId.length > 0) {
+                inspectedStyleIds.add(seg.textStyleId);
+              }
+            }
+          } catch (_) {}
+        }
       }
       if ("children" in node) {
-        for (const child of node.children) {
-          extractStyleIds(child, depth + 1);
+        for (let i = 0; i < node.children.length; i++) {
+          extractStyleIds(node.children[i], depth + 1);
         }
       }
     }
 
-    for (const root of targetNodes) {
+    // Scan selection first
+    if (figma.currentPage.selection.length > 0) {
+      for (const root of figma.currentPage.selection) {
+        extractStyleIds(root);
+      }
+    }
+    // Also scan entire current page to discover all active styles
+    for (const root of figma.currentPage.children) {
       extractStyleIds(root);
     }
 
@@ -284,7 +532,7 @@ async function discoverAllStyles(forceRefresh = false) {
 }
 
 // ==========================================
-// 4. PARALLEL STYLE MANAGER
+// 5. PARALLEL STYLE MANAGER
 // ==========================================
 class FastStyleManager {
   constructor(catalog = []) {
@@ -297,6 +545,9 @@ class FastStyleManager {
 
     const allFonts = [];
     for (const item of this.catalog) {
+      if (item.fontName) allFonts.push(item.fontName);
+    }
+    for (const item of this.localStyles) {
       if (item.fontName) allFonts.push(item.fontName);
     }
     await preloadFonts(allFonts);
@@ -319,6 +570,7 @@ class FastStyleManager {
               if (imported && imported.type === "TEXT") {
                 globalStyleCache.set(candidate.key, imported);
                 globalStyleCache.set(imported.id, imported);
+                if (imported.name) globalStyleCache.set(`name__${imported.name.toLowerCase()}`, imported);
               }
             })
             .catch(() => {})
@@ -331,36 +583,96 @@ class FastStyleManager {
     }
   }
 
-  getResolvedStyle(candidate) {
+  async getResolvedStyleAsync(candidate) {
+    if (!candidate) return null;
+
     const cacheKey = candidate.key || candidate.id || candidate.name;
     if (globalStyleCache.has(cacheKey)) {
       return globalStyleCache.get(cacheKey);
     }
 
-    if (candidate.id && globalStyleCache.has(candidate.id)) {
-      return globalStyleCache.get(candidate.id);
+    if (candidate.id) {
+      const styleById = await getStyleSafe(candidate.id);
+      if (styleById) {
+        globalStyleCache.set(cacheKey, styleById);
+        return styleById;
+      }
     }
 
-    const localMatch = this.localStyles.find(
-      (s) =>
-        (candidate.key && s.key === candidate.key) ||
-        s.name.toLowerCase() === candidate.name.toLowerCase()
-    );
-
-    if (localMatch) {
-      globalStyleCache.set(cacheKey, localMatch);
-      return localMatch;
+    if (candidate.key && !candidate.key.startsWith("REMOTE_STYLE_KEY")) {
+      try {
+        const imported = await figma.importStyleByKeyAsync(candidate.key);
+        if (imported && imported.type === "TEXT") {
+          globalStyleCache.set(cacheKey, imported);
+          globalStyleCache.set(imported.id, imported);
+          if (imported.key) globalStyleCache.set(imported.key, imported);
+          if (imported.name) globalStyleCache.set(`name__${imported.name.toLowerCase()}`, imported);
+          return imported;
+        }
+      } catch (_) {}
     }
 
-    const specMatch = this.localStyles.find(
-      (s) =>
-        s.fontSize === candidate.fontSize &&
-        s.fontName.family.toLowerCase() === candidate.fontName.family.toLowerCase()
-    );
+    // Match by exact key in localStyles
+    if (candidate.key) {
+      const keyMatch = this.localStyles.find((s) => s.key === candidate.key);
+      if (keyMatch) {
+        globalStyleCache.set(cacheKey, keyMatch);
+        return keyMatch;
+      }
+    }
 
-    if (specMatch) {
-      globalStyleCache.set(cacheKey, specMatch);
-      return specMatch;
+    // Match by exact name in localStyles
+    if (candidate.name) {
+      const nameMatch = this.localStyles.find(
+        (s) => s.name.toLowerCase() === candidate.name.toLowerCase()
+      );
+      if (nameMatch) {
+        globalStyleCache.set(cacheKey, nameMatch);
+        return nameMatch;
+      }
+
+      const normName = normalizeStyleName(candidate.name);
+      const normMatch = this.localStyles.find(
+        (s) => normalizeStyleName(s.name) === normName
+      );
+      if (normMatch) {
+        globalStyleCache.set(cacheKey, normMatch);
+        return normMatch;
+      }
+    }
+
+    // Match by exact typography specs (family, style/weight, size, lineHeight)
+    if (candidate.fontName && candidate.fontSize) {
+      const candWeight = parseFontWeight(candidate.fontName.style);
+      const candItalic = /italic|oblique/i.test(candidate.fontName.style || "");
+      const candFamily = (candidate.fontName.family || "").toLowerCase();
+      const candLhPx = resolveLineHeightPixels(candidate.lineHeight, candidate.fontSize);
+
+      const exactSpecMatch = this.localStyles.find((s) => {
+        if (!s.fontName || s.fontSize !== candidate.fontSize) return false;
+        if ((s.fontName.family || "").toLowerCase() !== candFamily) return false;
+        if (parseFontWeight(s.fontName.style) !== candWeight) return false;
+        if (/italic|oblique/i.test(s.fontName.style || "") !== candItalic) return false;
+        const sLhPx = resolveLineHeightPixels(s.lineHeight, s.fontSize);
+        if (Math.abs(sLhPx - candLhPx) > 1.5) return false;
+        return true;
+      });
+
+      if (exactSpecMatch) {
+        globalStyleCache.set(cacheKey, exactSpecMatch);
+        return exactSpecMatch;
+      }
+
+      const weightSpecMatch = this.localStyles.find((s) => {
+        if (!s.fontName || s.fontSize !== candidate.fontSize) return false;
+        if ((s.fontName.family || "").toLowerCase() !== candFamily) return false;
+        return parseFontWeight(s.fontName.style) === candWeight;
+      });
+
+      if (weightSpecMatch) {
+        globalStyleCache.set(cacheKey, weightSpecMatch);
+        return weightSpecMatch;
+      }
     }
 
     return null;
@@ -368,7 +680,7 @@ class FastStyleManager {
 }
 
 // ==========================================
-// 5. NODE TRAVERSAL & HELPERS
+// 6. NODE TRAVERSAL & HELPERS
 // ==========================================
 function isInsideInstance(node) {
   let curr = node.parent;
@@ -405,24 +717,27 @@ function collectTextNodes(selection, ignoreInstances = false) {
   return textNodes;
 }
 
-// ==========================================
-// 6. ASYNC NODE STYLE APPLICATION (DYNAMIC-PAGE SAFE)
-// ==========================================
-async function applyNodeStyleAsync(textNode, styleId) {
+async function applyNodeStyleAsync(textNode, style) {
+  if (style.fontName) {
+    await preloadFonts([style.fontName]);
+  }
   if (typeof textNode.setTextStyleIdAsync === "function") {
-    await textNode.setTextStyleIdAsync(styleId);
+    await textNode.setTextStyleIdAsync(style.id);
   } else if (typeof textNode.setRangeTextStyleIdAsync === "function") {
-    await textNode.setRangeTextStyleIdAsync(0, textNode.characters.length, styleId);
+    await textNode.setRangeTextStyleIdAsync(0, textNode.characters.length, style.id);
   } else {
-    textNode.textStyleId = styleId;
+    textNode.textStyleId = style.id;
   }
 }
 
-async function applyRangeStyleAsync(textNode, start, end, styleId) {
+async function applyRangeStyleAsync(textNode, start, end, style) {
+  if (style.fontName) {
+    await preloadFonts([style.fontName]);
+  }
   if (typeof textNode.setRangeTextStyleIdAsync === "function") {
-    await textNode.setRangeTextStyleIdAsync(start, end, styleId);
+    await textNode.setRangeTextStyleIdAsync(start, end, style.id);
   } else {
-    textNode.setRangeTextStyleId(start, end, styleId);
+    textNode.setRangeTextStyleId(start, end, style.id);
   }
 }
 
@@ -482,7 +797,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
   const manager = new FastStyleManager(activeCatalog);
   await Promise.all([preloadFonts(fontsToLoad), manager.warmup()]);
 
-  // Apply styles with dynamic-page async setters
+  // Apply styles
   for (let i = 0; i < textNodes.length; i++) {
     const textNode = textNodes[i];
     summary.totalInspected++;
@@ -499,18 +814,26 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
       const isMixedLh = textNode.lineHeight === figma.mixed;
 
       if (!isMixedFont && !isMixedSize && !isMixedLh) {
+        let existingStyle = null;
+        if (typeof textNode.textStyleId === "string" && textNode.textStyleId.length > 0) {
+          existingStyle = await getStyleSafe(textNode.textStyleId);
+        }
+
         const sourceSpec = {
           fontName: textNode.fontName,
           fontSize: textNode.fontSize,
           lineHeight: textNode.lineHeight,
+          existingStyle,
+          layerName: textNode.name,
         };
 
-        const closest = findClosestStyle(sourceSpec, activeCatalog);
-        const style = manager.getResolvedStyle(closest);
+        const closest = findBestMatchingStyle(sourceSpec, activeCatalog);
+        const style = await manager.getResolvedStyleAsync(closest);
 
         if (style) {
-          await applyNodeStyleAsync(textNode, style.id);
-        } else {
+          await applyNodeStyleAsync(textNode, style);
+        } else if (closest && closest.fontName) {
+          await preloadFonts([closest.fontName]);
           textNode.fontName = closest.fontName;
           textNode.fontSize = closest.fontSize;
           textNode.lineHeight = closest.lineHeight;
@@ -527,20 +850,26 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
 
         for (let s = 0; s < segments.length; s++) {
           const segment = segments[s];
-          const closest = findClosestStyle(
-            {
-              fontName: segment.fontName,
-              fontSize: segment.fontSize,
-              lineHeight: segment.lineHeight,
-            },
-            activeCatalog
-          );
+          let segExistingStyle = null;
+          if (typeof segment.textStyleId === "string" && segment.textStyleId.length > 0) {
+            segExistingStyle = await getStyleSafe(segment.textStyleId);
+          }
 
-          const style = manager.getResolvedStyle(closest);
+          const segSpec = {
+            fontName: segment.fontName,
+            fontSize: segment.fontSize,
+            lineHeight: segment.lineHeight,
+            existingStyle: segExistingStyle,
+            layerName: textNode.name,
+          };
+
+          const closest = findBestMatchingStyle(segSpec, activeCatalog);
+          const style = await manager.getResolvedStyleAsync(closest);
 
           if (style) {
-            await applyRangeStyleAsync(textNode, segment.start, segment.end, style.id);
-          } else {
+            await applyRangeStyleAsync(textNode, segment.start, segment.end, style);
+          } else if (closest && closest.fontName) {
+            await preloadFonts([closest.fontName]);
             textNode.setRangeFontName(segment.start, segment.end, closest.fontName);
             textNode.setRangeFontSize(segment.start, segment.end, closest.fontSize);
             textNode.setRangeLineHeight(segment.start, segment.end, closest.lineHeight);
