@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    :root {
+      --bg: var(--figma-color-bg, #ffffff);
+      --text: var(--figma-color-text, #333333);
+      --text-secondary: var(--figma-color-text-secondary, #777777);
+      --primary: var(--figma-color-bg-brand, #18a0fb);
+      --primary-hover: var(--figma-color-bg-brand-hover, #0d8de3);
+      --border: var(--figma-color-border, #e5e5e5);
+      --surface: var(--figma-color-bg-secondary, #f8f9fa);
+      --success: #27ae60;
+      --tag-local: #e8f4fd;
+      --tag-local-text: #1976d2;
+      --tag-remote: #f3e8fd;
+      --tag-remote-text: #7b1fa2;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      font-size: 12px;
+      user-select: none;
+    }
+    h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    p.desc {
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+      line-height: 1.35;
+    }
+    .stats-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .badge-group {
+      display: flex;
+      gap: 6px;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .badge.local {
+      background: var(--tag-local);
+      color: var(--tag-local-text);
+    }
+    .badge.remote {
+      background: var(--tag-remote);
+      color: var(--tag-remote-text);
+    }
+    .btn-icon {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.15s;
+    }
+    .btn-icon:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+    .btn-icon svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+    .options-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .row-flex {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .select-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    .select-dropdown {
+      appearance: none;
+      -webkit-appearance: none;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 11px;
+      padding: 5px 24px 5px 8px;
+      border-radius: 4px;
+      outline: none;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .select-dropdown:focus {
+      border-color: var(--primary);
+    }
+    .select-arrow {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      width: 10px;
+      height: 10px;
+      fill: var(--text-secondary);
+    }
+    /* Custom Figma-Style Checkbox */
+    .checkbox-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      position: relative;
+    }
+    .checkbox-container input {
+      position: absolute;
+      opacity: 0;
+      cursor: pointer;
+      height: 0;
+      width: 0;
+    }
+    .custom-checkbox {
+      width: 16px;
+      height: 16px;
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+    .checkbox-container:hover input ~ .custom-checkbox {
+      border-color: var(--primary);
+    }
+    .checkbox-container input:checked ~ .custom-checkbox {
+      background-color: var(--primary);
+      border-color: var(--primary);
+    }
+    .custom-checkbox svg {
+      width: 10px;
+      height: 10px;
+      stroke: #ffffff;
+      stroke-width: 2.2;
+      fill: none;
+      display: none;
+    }
+    .checkbox-container input:checked ~ .custom-checkbox svg {
+      display: block;
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      flex: 1;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+    .log-item {
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .log-item.error {
+      color: #eb5757;
+    }
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      flex: 1;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    button.primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    button.primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+    button.secondary {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--text);
+    }
+    button.secondary:hover:not(:disabled) {
+      background: rgba(0, 0, 0, 0.04);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <h2>Sync Text Styles</h2>
+  <p class="desc">
+    Detects local and remote text styles in your file and matches text layers to the closest style.
+  </p>
+
+  <div class="stats-card">
+    <div class="badge-group">
+      <span class="badge local" id="badgeLocal">0 Local</span>
+      <span class="badge remote" id="badgeRemote">0 Remote</span>
+    </div>
+    <button class="btn-icon" id="btnRescan" title="Rescan styles in current file">
+      <svg viewBox="0 0 16 16">
+        <path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z"/>
+      </svg>
+      Rescan
+    </button>
+  </div>
+
+  <div class="options-group">
+    <div class="row-flex">
+      <span>Match Style Scope:</span>
+      <div class="select-wrapper">
+        <select id="selScope" class="select-dropdown">
+          <option value="all" selected>All (Local + Remote)</option>
+          <option value="remote">Remote Library Only</option>
+          <option value="local">Local Styles Only</option>
+        </select>
+        <svg class="select-arrow" viewBox="0 0 10 10">
+          <path d="M1 3.5L5 7.5L9 3.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <label class="checkbox-container">
+      <input type="checkbox" id="chkIgnoreInstances" checked />
+      <div class="custom-checkbox">
+        <svg viewBox="0 0 12 10">
+          <polyline points="1.5 5 4.5 8.5 10.5 1.5"></polyline>
+        </svg>
+      </div>
+      <span>Ignore component instances</span>
+    </label>
+  </div>
+
+  <div class="panel" id="logContainer">
+    <div id="idleState" style="color: var(--text-secondary); text-align: center; margin-top: 25px;">
+      Select frames on canvas and click <b>Update Styles</b>.
+    </div>
+    <div id="statsState" style="display: none;">
+      <div class="stats-row"><span>Total Inspected:</span><span id="statInspected">0</span></div>
+      <div class="stats-row"><span>Updated:</span><span id="statUpdated" style="color: var(--success);">0</span></div>
+      <div class="stats-row"><span>Skipped:</span><span id="statSkipped">0</span></div>
+      <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;" />
+      <div id="logList"></div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="secondary" id="btnCancel">Cancel</button>
+    <button class="primary" id="btnRun">Update Styles</button>
+  </div>
+
+  <script>
+    const btnRun = document.getElementById("btnRun");
+    const btnCancel = document.getElementById("btnCancel");
+    const btnRescan = document.getElementById("btnRescan");
+    const selScope = document.getElementById("selScope");
+    const chkIgnoreInstances = document.getElementById("chkIgnoreInstances");
+    const badgeLocal = document.getElementById("badgeLocal");
+    const badgeRemote = document.getElementById("badgeRemote");
+    const idleState = document.getElementById("idleState");
+    const statsState = document.getElementById("statsState");
+    const statInspected = document.getElementById("statInspected");
+    const statUpdated = document.getElementById("statUpdated");
+    const statSkipped = document.getElementById("statSkipped");
+    const logList = document.getElementById("logList");
+
+    function saveCurrentSettings() {
+      parent.postMessage(
+        {
+          pluginMessage: {
+            type: "save-settings",
+            settings: {
+              ignoreInstances: chkIgnoreInstances.checked,
+              scope: selScope.value,
+            },
+          },
+        },
+        "*"
+      );
+    }
+
+    chkIgnoreInstances.onchange = saveCurrentSettings;
+    selScope.onchange = saveCurrentSettings;
+
+    btnRun.onclick = () => {
+      btnRun.disabled = true;
+      btnRun.textContent = "Processing...";
+
+      parent.postMessage(
+        {
+          pluginMessage: {
+            type: "run-replace-styles",
+            options: {
+              ignoreInstances: chkIgnoreInstances.checked,
+              scope: selScope.value,
+            },
+          },
+        },
+        "*"
+      );
+    };
+
+    btnCancel.onclick = () => {
+      parent.postMessage({ pluginMessage: { type: "cancel" } }, "*");
+    };
+
+    btnRescan.onclick = () => {
+      parent.postMessage({ pluginMessage: { type: "rescan-styles" } }, "*");
+    };
+
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      if (msg.type === "load-settings" && msg.settings) {
+        if (typeof msg.settings.ignoreInstances === "boolean") {
+          chkIgnoreInstances.checked = msg.settings.ignoreInstances;
+        }
+        if (msg.settings.scope) {
+          selScope.value = msg.settings.scope;
+        }
+      }
+
+      if (msg.type === "styles-detected") {
+        badgeLocal.textContent = `${msg.localCount} Local`;
+        badgeRemote.textContent = `${msg.remoteCount} Remote`;
+      }
+
+      if (msg.type === "process-start") {
+        idleState.style.display = "none";
+        statsState.style.display = "block";
+        logList.innerHTML = "";
+      }
+
+      if (msg.type === "process-complete") {
+        btnRun.disabled = false;
+        btnRun.textContent = "Update Styles";
+
+        const { summary } = msg;
+        statInspected.textContent = summary.totalInspected;
+        statUpdated.textContent = summary.totalUpdated;
+        statSkipped.textContent = summary.totalSkipped;
+
+        summary.errors.forEach((err) => {
+          const item = document.createElement("div");
+          item.className = "log-item error";
+          item.textContent = err;
+          logList.appendChild(item);
+        });
+      }
+    };
+  </script>
+</body>
+</html>
