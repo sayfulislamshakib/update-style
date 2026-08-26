@@ -2,151 +2,124 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <title>Update Local Styles</title>
   <style>
     :root {
       --bg: var(--figma-color-bg, #ffffff);
-      --text: var(--figma-color-text, #333333);
-      --text-secondary: var(--figma-color-text-secondary, #777777);
+      --surface: var(--figma-color-bg-secondary, #f5f5f5);
+      --text: var(--figma-color-text, #1e1e1e);
+      --text-secondary: var(--figma-color-text-secondary, #8c8c8c);
+      --border: var(--figma-color-border, #e5e5e5);
       --primary: var(--figma-color-bg-brand, #18a0fb);
       --primary-hover: var(--figma-color-bg-brand-hover, #0d8de3);
-      --border: var(--figma-color-border, #e5e5e5);
-      --surface: var(--figma-color-bg-secondary, #f8f9fa);
-      --success: #27ae60;
-      --tag-local: #e8f4fd;
-      --tag-local-text: #1976d2;
-      --tag-remote: #f3e8fd;
-      --tag-remote-text: #7b1fa2;
-      --tag-custom: #fef3e6;
-      --tag-custom-text: #d97706;
+      --success: #10b981;
+      --tag-local: #e6f4ea;
+      --tag-local-text: #137333;
     }
+
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
+
     body {
       background: var(--bg);
       color: var(--text);
-      padding: 14px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
       height: 100vh;
+      overflow: hidden;
       font-size: 12px;
       user-select: none;
-      overflow: hidden;
     }
+
     h2 {
       font-size: 14px;
       font-weight: 600;
       margin-bottom: 4px;
     }
+
     p.desc {
       color: var(--text-secondary);
-      margin-bottom: 10px;
-      line-height: 1.35;
+      font-size: 11px;
+      line-height: 1.4;
+      margin-bottom: 12px;
     }
+
     .stats-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 8px 10px;
-      margin-bottom: 10px;
+      padding: 10px 12px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 6px;
+      margin-bottom: 12px;
     }
+
     .badge-group {
       display: flex;
+      align-items: center;
       gap: 6px;
-      flex-wrap: wrap;
     }
+
     .badge {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 3px 8px;
-      border-radius: 12px;
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
     }
+
     .badge.local {
       background: var(--tag-local);
       color: var(--tag-local-text);
     }
-    .badge.remote {
-      background: var(--tag-remote);
-      color: var(--tag-remote-text);
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
     }
+
     .btn-icon {
       background: transparent;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 4px 8px;
-      cursor: pointer;
+      border: none;
+      color: var(--primary);
       font-size: 11px;
-      color: var(--text);
+      font-weight: 500;
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      transition: background 0.15s;
-      flex: 0 0 auto;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background 0.15s ease;
     }
+
     .btn-icon:hover {
-      background: rgba(0, 0, 0, 0.05);
+      background: rgba(24, 160, 251, 0.08);
     }
+
     .btn-icon svg {
       width: 12px;
       height: 12px;
       fill: currentColor;
     }
+
     .options-group {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
-    .row-flex {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .select-wrapper {
-      position: relative;
-      display: inline-block;
-    }
-    .select-dropdown {
-      appearance: none;
-      -webkit-appearance: none;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 11px;
-      padding: 5px 24px 5px 8px;
-      border-radius: 4px;
-      outline: none;
-      cursor: pointer;
-      font-weight: 500;
-    }
-    .select-dropdown:focus {
-      border-color: var(--primary);
-    }
-    .select-arrow {
-      position: absolute;
-      right: 8px;
-      top: 50%;
-      transform: translateY(-50%);
-      pointer-events: none;
-      width: 10px;
-      height: 10px;
-      fill: var(--text-secondary);
-    }
-    /* Custom Figma-Style Checkbox */
+
     .checkbox-container {
       display: flex;
       align-items: center;
@@ -154,7 +127,9 @@
       cursor: pointer;
       font-size: 12px;
       position: relative;
+      user-select: none;
     }
+
     .checkbox-container input {
       position: absolute;
       opacity: 0;
@@ -162,6 +137,7 @@
       height: 0;
       width: 0;
     }
+
     .custom-checkbox {
       width: 16px;
       height: 16px;
@@ -174,13 +150,16 @@
       transition: all 0.15s ease;
       flex-shrink: 0;
     }
+
     .checkbox-container:hover input ~ .custom-checkbox {
       border-color: var(--primary);
     }
+
     .checkbox-container input:checked ~ .custom-checkbox {
       background-color: var(--primary);
       border-color: var(--primary);
     }
+
     .custom-checkbox svg {
       width: 10px;
       height: 10px;
@@ -189,6 +168,7 @@
       fill: none;
       display: none;
     }
+
     .checkbox-container input:checked ~ .custom-checkbox svg {
       display: block;
     }
@@ -200,26 +180,32 @@
       padding: 10px;
       flex: 1;
       overflow-y: auto;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
+      user-select: text;
     }
+
     .log-item {
       padding: 4px 0;
       border-bottom: 1px solid var(--border);
       font-size: 11px;
     }
+
     .log-item.error {
       color: #eb5757;
     }
+
     .stats-row {
       display: flex;
       justify-content: space-between;
       margin-bottom: 6px;
       font-weight: 500;
     }
+
     .actions {
       display: flex;
       gap: 8px;
     }
+
     button {
       flex: 1;
       padding: 9px 12px;
@@ -233,21 +219,26 @@
       justify-content: center;
       gap: 6px;
     }
+
     button.primary {
       background: var(--primary);
       color: #fff;
     }
+
     button.primary:hover:not(:disabled) {
       background: var(--primary-hover);
     }
+
     button.secondary {
       background: transparent;
       border-color: var(--border);
       color: var(--text);
     }
+
     button.secondary:hover:not(:disabled) {
       background: rgba(0, 0, 0, 0.04);
     }
+
     button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -255,18 +246,20 @@
   </style>
 </head>
 <body>
-  <h2>Sync Text Styles</h2>
+  <h2>Sync Local Text Styles</h2>
   <p class="desc">
-    Detects and imports local & remote library text styles across your files to sync selected text layers.
+    Matches and applies your document's local text styles to selected text layers.
   </p>
 
   <div class="stats-card">
     <div class="badge-group">
-      <span class="badge local" id="badgeLocal">0 Local</span>
-      <span class="badge remote" id="badgeRemote">0 Remote</span>
+      <span class="badge local" id="badgeLocal">
+        <span class="badge-dot"></span>
+        <span id="txtLocalCount">0 Local Styles Detected</span>
+      </span>
     </div>
     <div>
-      <button class="btn-icon" id="btnRescan" title="Rescan styles across document">
+      <button class="btn-icon" id="btnRescan" title="Rescan local text styles in document">
         <svg viewBox="0 0 16 16">
           <path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z"/>
         </svg>
@@ -276,20 +269,6 @@
   </div>
 
   <div class="options-group">
-    <div class="row-flex">
-      <span>Match Style Scope:</span>
-      <div class="select-wrapper">
-        <select id="selScope" class="select-dropdown">
-          <option value="all" selected>All (Local + Remote)</option>
-          <option value="remote">Remote Library Only</option>
-          <option value="local">Local Styles Only</option>
-        </select>
-        <svg class="select-arrow" viewBox="0 0 10 10">
-          <path d="M1 3.5L5 7.5L9 3.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-        </svg>
-      </div>
-    </div>
-
     <label class="checkbox-container">
       <input type="checkbox" id="chkIgnoreInstances" checked />
       <div class="custom-checkbox">
@@ -297,12 +276,12 @@
           <polyline points="1.5 5 4.5 8.5 10.5 1.5"></polyline>
         </svg>
       </div>
-      <span>Ignore component instances (except slots)</span>
+      <span>Ignore component instances</span>
     </label>
   </div>
 
   <div class="panel" id="logContainer">
-    <div id="idleState" style="color: var(--text-secondary); text-align: center; margin-top: 20px;">
+    <div id="idleState" style="color: var(--text-secondary); text-align: center; margin-top: 24px;">
       Select frames or text layers on canvas and click <b>Update Styles</b>.
     </div>
     <div id="statsState" style="display: none;">
@@ -323,10 +302,8 @@
     const btnRun = document.getElementById("btnRun");
     const btnCancel = document.getElementById("btnCancel");
     const btnRescan = document.getElementById("btnRescan");
-    const selScope = document.getElementById("selScope");
     const chkIgnoreInstances = document.getElementById("chkIgnoreInstances");
-    const badgeLocal = document.getElementById("badgeLocal");
-    const badgeRemote = document.getElementById("badgeRemote");
+    const txtLocalCount = document.getElementById("txtLocalCount");
     const idleState = document.getElementById("idleState");
     const statsState = document.getElementById("statsState");
     const statInspected = document.getElementById("statInspected");
@@ -341,7 +318,6 @@
             type: "save-settings",
             settings: {
               ignoreInstances: chkIgnoreInstances.checked,
-              scope: selScope.value,
             },
           },
         },
@@ -350,7 +326,6 @@
     }
 
     chkIgnoreInstances.onchange = saveCurrentSettings;
-    selScope.onchange = saveCurrentSettings;
 
     btnRun.onclick = () => {
       btnRun.disabled = true;
@@ -362,7 +337,6 @@
             type: "run-replace-styles",
             options: {
               ignoreInstances: chkIgnoreInstances.checked,
-              scope: selScope.value,
             },
           },
         },
@@ -386,14 +360,10 @@
         if (typeof msg.settings.ignoreInstances === "boolean") {
           chkIgnoreInstances.checked = msg.settings.ignoreInstances;
         }
-        if (msg.settings.scope) {
-          selScope.value = msg.settings.scope;
-        }
       }
 
       if (msg.type === "styles-detected") {
-        badgeLocal.textContent = `${msg.localCount} Local`;
-        badgeRemote.textContent = `${msg.remoteCount} Remote`;
+        txtLocalCount.textContent = `${msg.count} Local Style${msg.count === 1 ? "" : "s"} Detected`;
       }
 
       if (msg.type === "process-start") {
@@ -411,12 +381,14 @@
         statUpdated.textContent = summary.totalUpdated;
         statSkipped.textContent = summary.totalSkipped;
 
-        summary.errors.forEach((err) => {
-          const item = document.createElement("div");
-          item.className = "log-item error";
-          item.textContent = err;
-          logList.appendChild(item);
-        });
+        if (summary.errors && summary.errors.length > 0) {
+          summary.errors.forEach((err) => {
+            const item = document.createElement("div");
+            item.className = "log-item error";
+            item.textContent = err;
+            logList.appendChild(item);
+          });
+        }
       }
     };
   </script>
