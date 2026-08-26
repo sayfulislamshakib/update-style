@@ -1,64 +1,64 @@
 "use strict";
 
 // ==========================================
-// 1. DEFAULT REMOTE CATALOG (FALLBACK)
+// 1. DEFAULT REMOTE CATALOG (FALLBACK SPEC)
 // ==========================================
 const DEFAULT_CATALOG = [
   {
     name: "Heading / H1",
-    key: "REMOTE_STYLE_KEY_H1",
     fontName: { family: "Inter", style: "Bold" },
     fontSize: 32,
     lineHeight: { unit: "PIXELS", value: 40 },
+    isRemote: true,
   },
   {
     name: "Heading / H2",
-    key: "REMOTE_STYLE_KEY_H2",
     fontName: { family: "Inter", style: "SemiBold" },
     fontSize: 24,
     lineHeight: { unit: "PIXELS", value: 32 },
+    isRemote: true,
   },
   {
     name: "Heading / H3",
-    key: "REMOTE_STYLE_KEY_H3",
     fontName: { family: "Inter", style: "SemiBold" },
     fontSize: 20,
     lineHeight: { unit: "PIXELS", value: 28 },
+    isRemote: true,
   },
   {
     name: "Body / Large",
-    key: "REMOTE_STYLE_KEY_BODY_LG",
     fontName: { family: "Inter", style: "Regular" },
     fontSize: 18,
     lineHeight: { unit: "PIXELS", value: 26 },
+    isRemote: true,
   },
   {
     name: "Body / Medium",
-    key: "REMOTE_STYLE_KEY_BODY_MD",
     fontName: { family: "Inter", style: "Regular" },
     fontSize: 16,
     lineHeight: { unit: "PIXELS", value: 24 },
+    isRemote: true,
   },
   {
     name: "Body / Medium Bold",
-    key: "REMOTE_STYLE_KEY_BODY_MD_BOLD",
     fontName: { family: "Inter", style: "Bold" },
     fontSize: 16,
     lineHeight: { unit: "PIXELS", value: 24 },
+    isRemote: true,
   },
   {
     name: "Body / Small",
-    key: "REMOTE_STYLE_KEY_BODY_SM",
     fontName: { family: "Inter", style: "Regular" },
     fontSize: 14,
     lineHeight: { unit: "PIXELS", value: 20 },
+    isRemote: true,
   },
   {
     name: "Caption",
-    key: "REMOTE_STYLE_KEY_CAPTION",
     fontName: { family: "Inter", style: "Regular" },
     fontSize: 12,
     lineHeight: { unit: "PIXELS", value: 16 },
+    isRemote: true,
   },
 ];
 
@@ -96,7 +96,6 @@ function parseFontWeight(styleName) {
   if (!styleName) return 400;
   const str = String(styleName).toLowerCase();
 
-  // Check explicit numeric weight (e.g., "500", "w600", "weight-700")
   const numMatch = str.match(/\b(100|200|300|400|500|600|700|800|900|950)\b/);
   if (numMatch) return parseInt(numMatch[1], 10);
 
@@ -143,7 +142,6 @@ function extractNameTokens(name) {
   return normalized.split(" ").filter((t) => t.length > 1);
 }
 
-// Category synonyms mapping
 const CATEGORY_MAP = {
   h1: "h1",
   h2: "h2",
@@ -193,14 +191,12 @@ function getStyleCategoryOrRoot(name) {
   if (!name) return "";
   const tokens = extractNameTokens(name);
 
-  // Check specific keywords first (e.g. "h1", "body", "title")
   for (const token of tokens) {
     if (CATEGORY_MAP[token]) {
       return CATEGORY_MAP[token];
     }
   }
 
-  // Fallback: check substrings in tokens
   for (const token of tokens) {
     for (const [kw, cat] of Object.entries(CATEGORY_MAP)) {
       if (token.includes(kw)) {
@@ -260,7 +256,6 @@ function findClosestInCandidates(sourceSpec, candidateList) {
     const candidate = candidateList[i];
     let score = calculateMatchScore(sourceSpec, candidate);
 
-    // Name affinity bonus if partial name matches
     if (existingStyle && existingStyle.name && candidate.name) {
       const candNorm = normalizeStyleName(candidate.name);
       const existNorm = normalizeStyleName(existingStyle.name);
@@ -324,7 +319,7 @@ function findBestMatchingStyle(sourceSpec, catalog) {
       }
     }
 
-    // 3. Category Match for Existing Style (e.g. text is "Body", find available "Body" styles)
+    // 3. Category Match for Existing Style
     if (existingStyle.name) {
       const existingCat = getStyleCategoryOrRoot(existingStyle.name);
       if (existingCat) {
@@ -338,7 +333,6 @@ function findBestMatchingStyle(sourceSpec, catalog) {
           const bestCatMatch = findClosestInCandidates(sourceSpec, sameCategoryCandidates);
           if (bestCatMatch) {
             const catScore = calculateMatchScore(sourceSpec, bestCatMatch);
-            // If reasonable match within category, return it
             if (catScore < 100) return bestCatMatch;
           }
         }
@@ -346,12 +340,11 @@ function findBestMatchingStyle(sourceSpec, catalog) {
     }
   }
 
-  // 4. Layer Name Match (e.g. "body-text", "title-text", "Heading 1")
+  // 4. Layer Name Match
   if (layerName && typeof layerName === "string" && layerName.trim().length > 0) {
     const trimmedLayerName = layerName.trim();
     const layerNameLower = trimmedLayerName.toLowerCase();
 
-    // Exact layer name match
     const matchByLayerName = catalog.find((c) => c.name && c.name.toLowerCase().trim() === layerNameLower);
     if (matchByLayerName) return matchByLayerName;
 
@@ -359,7 +352,6 @@ function findBestMatchingStyle(sourceSpec, catalog) {
     const matchByNormLayer = catalog.find((c) => c.name && normalizeStyleName(c.name) === normLayerName);
     if (matchByNormLayer) return matchByNormLayer;
 
-    // Category match from layer name
     const layerCat = getStyleCategoryOrRoot(trimmedLayerName);
     if (layerCat) {
       const sameLayerCatCandidates = catalog.filter((c) => {
@@ -378,7 +370,7 @@ function findBestMatchingStyle(sourceSpec, catalog) {
     }
   }
 
-  // 5. Fallback: Find closest match across entire catalog
+  // 5. Fallback: Find closest match across catalog
   return findClosestInCandidates(sourceSpec, catalog);
 }
 
@@ -435,6 +427,24 @@ async function preloadFonts(fontNames = []) {
   }
 }
 
+async function collectFontsFromTextNodes(nodes) {
+  const fonts = [];
+  for (const node of nodes) {
+    if (!node || node.hasMissingFont) continue;
+    if (node.fontName !== figma.mixed && node.fontName) {
+      fonts.push(node.fontName);
+    } else {
+      try {
+        const segments = node.getStyledTextSegments(["fontName"]);
+        for (const seg of segments) {
+          if (seg.fontName) fonts.push(seg.fontName);
+        }
+      } catch (_) {}
+    }
+  }
+  return fonts;
+}
+
 async function discoverAllStyles(forceRefresh = false) {
   if (cachedDiscoveredStyles && !forceRefresh) {
     return cachedDiscoveredStyles;
@@ -442,7 +452,7 @@ async function discoverAllStyles(forceRefresh = false) {
 
   const stylesMap = new Map();
 
-  // 1. Local styles
+  // 1. Local styles (Instant)
   try {
     const localStyles = await getLocalTextStylesSafe();
     for (const s of localStyles) {
@@ -465,42 +475,50 @@ async function discoverAllStyles(forceRefresh = false) {
     console.warn("[discoverAllStyles] Error loading local styles:", err);
   }
 
-  // 2. Remote styles across page & selection
+  // 2. Discover Remote styles from current selection & page
   try {
     const inspectedStyleIds = new Set();
 
-    function extractStyleIds(node, depth = 0) {
-      if (depth > 50) return;
-      if (node.type === "TEXT") {
-        if (typeof node.textStyleId === "string" && node.textStyleId.length > 0) {
-          inspectedStyleIds.add(node.textStyleId);
-        } else if (node.textStyleId === figma.mixed) {
-          try {
-            const segments = node.getStyledTextSegments(["textStyleId"]);
-            for (const seg of segments) {
-              if (typeof seg.textStyleId === "string" && seg.textStyleId.length > 0) {
-                inspectedStyleIds.add(seg.textStyleId);
-              }
+    // Inspect user's active selection first to ensure selected styles are always discovered
+    try {
+      const sel = figma.currentPage.selection || [];
+      for (const selNode of sel) {
+        if (selNode.type === "TEXT") {
+          if (typeof selNode.textStyleId === "string" && selNode.textStyleId.length > 0) {
+            inspectedStyleIds.add(selNode.textStyleId);
+          }
+        } else if (typeof selNode.findAllWithCriteria === "function") {
+          const selText = selNode.findAllWithCriteria({ types: ["TEXT"] });
+          for (const node of selText) {
+            if (typeof node.textStyleId === "string" && node.textStyleId.length > 0) {
+              inspectedStyleIds.add(node.textStyleId);
             }
-          } catch (_) {}
+          }
         }
       }
-      if ("children" in node) {
-        for (let i = 0; i < node.children.length; i++) {
-          extractStyleIds(node.children[i], depth + 1);
-        }
-      }
+    } catch (_) {}
+
+    let textNodesToScan = [];
+    if (typeof figma.currentPage.findAllWithCriteria === "function") {
+      textNodesToScan = figma.currentPage.findAllWithCriteria({ types: ["TEXT"] });
     }
 
-    // Scan selection first
-    if (figma.currentPage.selection.length > 0) {
-      for (const root of figma.currentPage.selection) {
-        extractStyleIds(root);
+    // Limit to 600 nodes to keep instant execution without thread lock
+    const sampleLimit = Math.min(textNodesToScan.length, 600);
+    for (let i = 0; i < sampleLimit; i++) {
+      const node = textNodesToScan[i];
+      if (typeof node.textStyleId === "string" && node.textStyleId.length > 0) {
+        inspectedStyleIds.add(node.textStyleId);
+      } else if (node.textStyleId === figma.mixed) {
+        try {
+          const segments = node.getStyledTextSegments(["textStyleId"]);
+          for (const seg of segments) {
+            if (typeof seg.textStyleId === "string" && seg.textStyleId.length > 0) {
+              inspectedStyleIds.add(seg.textStyleId);
+            }
+          }
+        } catch (_) {}
       }
-    }
-    // Also scan entire current page to discover all active styles
-    for (const root of figma.currentPage.children) {
-      extractStyleIds(root);
     }
 
     const stylePromises = Array.from(inspectedStyleIds).map((id) => getStyleSafe(id));
@@ -508,23 +526,43 @@ async function discoverAllStyles(forceRefresh = false) {
 
     for (const style of resolvedStyles) {
       if (style && style.type === "TEXT") {
+        const isRemoteStyle = style.remote === true || (typeof style.id === "string" && style.id.startsWith("S:"));
         const key = style.key || style.id;
         if (!stylesMap.has(key)) {
+          let fontName = style.fontName;
+          let fontSize = style.fontSize;
+          let lineHeight = style.lineHeight;
+
+          // Remote styles from getStyleById often lack font properties;
+          // import by key to get the full spec
+          if (isRemoteStyle && style.key && (!fontName || !fontSize)) {
+            try {
+              const imported = await figma.importStyleByKeyAsync(style.key);
+              if (imported && imported.type === "TEXT") {
+                fontName = imported.fontName;
+                fontSize = imported.fontSize;
+                lineHeight = imported.lineHeight;
+                globalStyleCache.set(style.key, imported);
+                globalStyleCache.set(imported.id, imported);
+              }
+            } catch (_) {}
+          }
+
           stylesMap.set(key, {
             name: style.name,
             key: style.key,
             id: style.id,
-            isRemote: style.remote === true,
-            source: style.remote ? "remote" : "local",
-            fontName: style.fontName,
-            fontSize: style.fontSize,
-            lineHeight: style.lineHeight,
+            isRemote: isRemoteStyle,
+            source: isRemoteStyle ? "remote" : "local",
+            fontName: fontName,
+            fontSize: fontSize,
+            lineHeight: lineHeight,
           });
         }
       }
     }
   } catch (err) {
-    console.warn("[discoverAllStyles] Error scanning nodes:", err);
+    console.warn("[discoverAllStyles] Error discovering page styles:", err);
   }
 
   cachedDiscoveredStyles = Array.from(stylesMap.values());
@@ -538,81 +576,76 @@ class FastStyleManager {
   constructor(catalog = []) {
     this.catalog = catalog;
     this.localStyles = [];
+    this.allDiscoveredStyles = [];
   }
 
   async warmup() {
     this.localStyles = await getLocalTextStylesSafe();
+    this.allDiscoveredStyles = await discoverAllStyles(false);
 
     const allFonts = [];
     for (const item of this.catalog) {
-      if (item.fontName) allFonts.push(item.fontName);
+      if (item && item.fontName) allFonts.push(item.fontName);
     }
     for (const item of this.localStyles) {
-      if (item.fontName) allFonts.push(item.fontName);
+      if (item && item.fontName) allFonts.push(item.fontName);
+    }
+    for (const item of this.allDiscoveredStyles) {
+      if (item && item.fontName) allFonts.push(item.fontName);
     }
     await preloadFonts(allFonts);
-
-    const remoteImports = [];
-    for (const candidate of this.catalog) {
-      const cacheKey = candidate.key || candidate.id || candidate.name;
-      if (globalStyleCache.has(cacheKey)) continue;
-
-      const isRealKey =
-        candidate.key &&
-        !candidate.key.startsWith("REMOTE_STYLE_KEY") &&
-        candidate.key.length >= 20;
-
-      if (isRealKey) {
-        remoteImports.push(
-          figma
-            .importStyleByKeyAsync(candidate.key)
-            .then((imported) => {
-              if (imported && imported.type === "TEXT") {
-                globalStyleCache.set(candidate.key, imported);
-                globalStyleCache.set(imported.id, imported);
-                if (imported.name) globalStyleCache.set(`name__${imported.name.toLowerCase()}`, imported);
-              }
-            })
-            .catch(() => {})
-        );
-      }
-    }
-
-    if (remoteImports.length > 0) {
-      await Promise.all(remoteImports);
-    }
   }
 
   async getResolvedStyleAsync(candidate) {
     if (!candidate) return null;
 
     const cacheKey = candidate.key || candidate.id || candidate.name;
-    if (globalStyleCache.has(cacheKey)) {
-      return globalStyleCache.get(cacheKey);
-    }
 
-    if (candidate.id) {
-      const styleById = await getStyleSafe(candidate.id);
-      if (styleById) {
-        globalStyleCache.set(cacheKey, styleById);
-        return styleById;
+    // 1. If remote key is present and not a dummy, use imported style
+    if (
+      candidate.key &&
+      typeof candidate.key === "string" &&
+      candidate.key.trim().length > 0
+    ) {
+      if (globalStyleCache.has(candidate.key)) {
+        return globalStyleCache.get(candidate.key);
       }
-    }
-
-    if (candidate.key && !candidate.key.startsWith("REMOTE_STYLE_KEY")) {
       try {
         const imported = await figma.importStyleByKeyAsync(candidate.key);
         if (imported && imported.type === "TEXT") {
           globalStyleCache.set(cacheKey, imported);
           globalStyleCache.set(imported.id, imported);
           if (imported.key) globalStyleCache.set(imported.key, imported);
-          if (imported.name) globalStyleCache.set(`name__${imported.name.toLowerCase()}`, imported);
           return imported;
         }
       } catch (_) {}
     }
 
-    // Match by exact key in localStyles
+    // 2. Check in-memory cache
+    if (globalStyleCache.has(cacheKey)) {
+      return globalStyleCache.get(cacheKey);
+    }
+
+    // 3. Check by style ID
+    if (candidate.id) {
+      const styleById = await getStyleSafe(candidate.id);
+      if (styleById) {
+        if (styleById.key && styleById.remote) {
+          try {
+            const imported = await figma.importStyleByKeyAsync(styleById.key);
+            if (imported) {
+              globalStyleCache.set(cacheKey, imported);
+              globalStyleCache.set(imported.id, imported);
+              return imported;
+            }
+          } catch (_) {}
+        }
+        globalStyleCache.set(cacheKey, styleById);
+        return styleById;
+      }
+    }
+
+    // 4. Match by exact key in localStyles
     if (candidate.key) {
       const keyMatch = this.localStyles.find((s) => s.key === candidate.key);
       if (keyMatch) {
@@ -621,7 +654,7 @@ class FastStyleManager {
       }
     }
 
-    // Match by exact name in localStyles
+    // 5. Match by exact name in localStyles
     if (candidate.name) {
       const nameMatch = this.localStyles.find(
         (s) => s.name.toLowerCase() === candidate.name.toLowerCase()
@@ -641,7 +674,7 @@ class FastStyleManager {
       }
     }
 
-    // Match by exact typography specs (family, style/weight, size, lineHeight)
+    // 6. Match by exact typography specs in localStyles
     if (candidate.fontName && candidate.fontSize) {
       const candWeight = parseFontWeight(candidate.fontName.style);
       const candItalic = /italic|oblique/i.test(candidate.fontName.style || "");
@@ -675,6 +708,65 @@ class FastStyleManager {
       }
     }
 
+    // 7. Match by name in all discovered styles (including remote)
+    if (candidate.name) {
+      const nameMatch = this.allDiscoveredStyles.find(
+        (s) => s.name && s.name.toLowerCase() === candidate.name.toLowerCase()
+      );
+      if (nameMatch) {
+        if (nameMatch.key) {
+          try {
+            const imported = await figma.importStyleByKeyAsync(nameMatch.key);
+            if (imported && imported.type === "TEXT") {
+              globalStyleCache.set(cacheKey, imported);
+              return imported;
+            }
+          } catch (_) {}
+        }
+        if (nameMatch.id) {
+          const styleById = await getStyleSafe(nameMatch.id);
+          if (styleById) {
+            globalStyleCache.set(cacheKey, styleById);
+            return styleById;
+          }
+        }
+      }
+    }
+
+    // 8. Match by font specs in all discovered styles (including remote)
+    if (candidate.fontName && candidate.fontSize) {
+      const candWeight = parseFontWeight(candidate.fontName.style);
+      const candItalic = /italic|oblique/i.test(candidate.fontName.style || "");
+      const candFamily = (candidate.fontName.family || "").toLowerCase();
+
+      const specMatch = this.allDiscoveredStyles.find((s) => {
+        if (!s.fontName || s.fontSize !== candidate.fontSize) return false;
+        if ((s.fontName.family || "").toLowerCase() !== candFamily) return false;
+        if (parseFontWeight(s.fontName.style) !== candWeight) return false;
+        if (/italic|oblique/i.test(s.fontName.style || "") !== candItalic) return false;
+        return true;
+      });
+
+      if (specMatch) {
+        if (specMatch.key) {
+          try {
+            const imported = await figma.importStyleByKeyAsync(specMatch.key);
+            if (imported && imported.type === "TEXT") {
+              globalStyleCache.set(cacheKey, imported);
+              return imported;
+            }
+          } catch (_) {}
+        }
+        if (specMatch.id) {
+          const styleById = await getStyleSafe(specMatch.id);
+          if (styleById) {
+            globalStyleCache.set(cacheKey, styleById);
+            return styleById;
+          }
+        }
+      }
+    }
+
     return null;
   }
 }
@@ -682,6 +774,8 @@ class FastStyleManager {
 // ==========================================
 // 6. NODE TRAVERSAL & HELPERS
 // ==========================================
+const SLOT_KEYWORD_REGEX = /\b(slot|placeholder|swap|content|body|custom|inner|item|override|template|container|wrapper|target|inside)\b|slot|placeholder|swap/i;
+
 function isInsideInstance(node) {
   let curr = node.parent;
   while (curr) {
@@ -691,47 +785,146 @@ function isInsideInstance(node) {
   return false;
 }
 
-function collectTextNodes(selection, ignoreInstances = false) {
-  const textNodes = [];
+function isSlotNode(node) {
+  if (!node) return false;
 
-  function traverse(node) {
-    if (ignoreInstances && node.type === "INSTANCE") return;
+  // 1. Check node name
+  if (typeof node.name === "string" && SLOT_KEYWORD_REGEX.test(node.name)) {
+    return true;
+  }
 
-    if (node.type === "TEXT") {
-      if (ignoreInstances && isInsideInstance(node)) return;
-      textNodes.push(node);
-      return;
-    }
-
-    if ("children" in node) {
-      for (let i = 0; i < node.children.length; i++) {
-        traverse(node.children[i]);
+  // 2. If it is an INSTANCE
+  if (node.type === "INSTANCE") {
+    // Check mainComponent name
+    try {
+      const mainComp = node.mainComponent;
+      if (mainComp) {
+        if (typeof mainComp.name === "string" && SLOT_KEYWORD_REGEX.test(mainComp.name)) {
+          return true;
+        }
+        if (
+          mainComp.parent &&
+          typeof mainComp.parent.name === "string" &&
+          SLOT_KEYWORD_REGEX.test(mainComp.parent.name)
+        ) {
+          return true;
+        }
       }
+    } catch (_) {}
+
+    // Check component property references
+    try {
+      if (node.componentPropertyReferences) {
+        if (node.componentPropertyReferences.mainComponent) {
+          return true;
+        }
+        for (const [key, val] of Object.entries(node.componentPropertyReferences)) {
+          if (SLOT_KEYWORD_REGEX.test(key) || (typeof val === "string" && SLOT_KEYWORD_REGEX.test(val))) {
+            return true;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Check component properties
+    try {
+      if (node.componentProperties) {
+        for (const [propName, propVal] of Object.entries(node.componentProperties)) {
+          if (SLOT_KEYWORD_REGEX.test(propName)) return true;
+          if (propVal && propVal.type === "INSTANCE_SWAP") return true;
+        }
+      }
+    } catch (_) {}
+
+    // In Figma, nested instances inside another instance are swapped slot components
+    if (isInsideInstance(node)) {
+      return true;
     }
   }
 
+  // 3. If it is a COMPONENT or COMPONENT_SET
+  if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+    if (typeof node.name === "string" && SLOT_KEYWORD_REGEX.test(node.name)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isInsideSlot(node) {
+  let curr = node;
+  while (curr && curr.type !== "PAGE" && curr.type !== "DOCUMENT") {
+    if (isSlotNode(curr)) {
+      return true;
+    }
+    curr = curr.parent;
+  }
+  return false;
+}
+
+function collectTextNodes(selection, ignoreInstances = false) {
+  const textNodes = [];
+  const visitedIds = new Set();
+
+  function addNode(node) {
+    if (!node || visitedIds.has(node.id)) return;
+    visitedIds.add(node.id);
+    textNodes.push(node);
+  }
+
   for (let i = 0; i < selection.length; i++) {
-    traverse(selection[i]);
+    const root = selection[i];
+    if (!root) continue;
+
+    // Direct text node in selection
+    if (root.type === "TEXT") {
+      if (!ignoreInstances || !isInsideInstance(root) || isInsideSlot(root)) {
+        addNode(root);
+      }
+      continue;
+    }
+
+    // Direct instance selected explicitly by user
+    const isDirectSelection = root.type === "INSTANCE";
+
+    if (typeof root.findAllWithCriteria === "function") {
+      const found = root.findAllWithCriteria({ types: ["TEXT"] });
+      for (let j = 0; j < found.length; j++) {
+        const textNode = found[j];
+        if (ignoreInstances) {
+          if (isInsideInstance(textNode)) {
+            // Allow if it is inside a slot or inside an explicitly selected instance
+            if (isInsideSlot(textNode) || isDirectSelection) {
+              addNode(textNode);
+            }
+            continue;
+          }
+        }
+        addNode(textNode);
+      }
+    }
   }
 
   return textNodes;
 }
 
 async function applyNodeStyleAsync(textNode, style) {
-  if (style.fontName) {
+  if (style && style.fontName) {
     await preloadFonts([style.fontName]);
+  }
+  if (textNode.fontName !== figma.mixed && textNode.fontName) {
+    await preloadFonts([textNode.fontName]);
   }
   if (typeof textNode.setTextStyleIdAsync === "function") {
     await textNode.setTextStyleIdAsync(style.id);
-  } else if (typeof textNode.setRangeTextStyleIdAsync === "function") {
-    await textNode.setRangeTextStyleIdAsync(0, textNode.characters.length, style.id);
   } else {
     textNode.textStyleId = style.id;
   }
 }
 
 async function applyRangeStyleAsync(textNode, start, end, style) {
-  if (style.fontName) {
+  if (style && style.fontName) {
     await preloadFonts([style.fontName]);
   }
   if (typeof textNode.setRangeTextStyleIdAsync === "function") {
@@ -753,7 +946,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
   };
 
   const selection = figma.currentPage.selection;
-  if (selection.length === 0) {
+  if (!selection || selection.length === 0) {
     figma.notify("⚠️ Please select at least one frame or text layer.");
     return summary;
   }
@@ -772,33 +965,28 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
   if (textNodes.length === 0) {
     figma.notify(
       options.ignoreInstances
-        ? "No eligible text layers found (all inside instances or empty)."
+        ? "No eligible text layers found (try unchecking 'Ignore component instances' or select the slot layer)."
         : "No text layers found in current selection."
     );
     return summary;
   }
 
-  // Preload all fonts in parallel
-  const fontsToLoad = [];
-  for (const textNode of textNodes) {
-    if (textNode.hasMissingFont) continue;
-    if (textNode.fontName !== figma.mixed) {
-      fontsToLoad.push(textNode.fontName);
-    } else {
-      try {
-        const segments = textNode.getStyledTextSegments(["fontName"]);
-        for (const seg of segments) {
-          fontsToLoad.push(seg.fontName);
-        }
-      } catch (_) {}
-    }
+  // Preload all fonts for the selected nodes & active catalog
+  const fontsToLoad = await collectFontsFromTextNodes(textNodes);
+  for (const item of activeCatalog) {
+    if (item && item.fontName) fontsToLoad.push(item.fontName);
   }
 
   const manager = new FastStyleManager(activeCatalog);
   await Promise.all([preloadFonts(fontsToLoad), manager.warmup()]);
 
-  // Apply styles
+  // Apply styles with yielding to keep UI 100% smooth
   for (let i = 0; i < textNodes.length; i++) {
+    // Yield every 25 nodes to prevent any freezing
+    if (i > 0 && i % 25 === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
     const textNode = textNodes[i];
     summary.totalInspected++;
 
@@ -814,6 +1002,10 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
       const isMixedLh = textNode.lineHeight === figma.mixed;
 
       if (!isMixedFont && !isMixedSize && !isMixedLh) {
+        if (textNode.fontName) {
+          await preloadFonts([textNode.fontName]);
+        }
+
         let existingStyle = null;
         if (typeof textNode.textStyleId === "string" && textNode.textStyleId.length > 0) {
           existingStyle = await getStyleSafe(textNode.textStyleId);
@@ -834,9 +1026,15 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
           await applyNodeStyleAsync(textNode, style);
         } else if (closest && closest.fontName) {
           await preloadFonts([closest.fontName]);
+          // Unlink style first if applied so setting raw properties does not throw in Figma
+          if (typeof textNode.setTextStyleIdAsync === "function") {
+            await textNode.setTextStyleIdAsync("");
+          } else {
+            textNode.textStyleId = "";
+          }
           textNode.fontName = closest.fontName;
-          textNode.fontSize = closest.fontSize;
-          textNode.lineHeight = closest.lineHeight;
+          if (closest.fontSize) textNode.fontSize = closest.fontSize;
+          if (closest.lineHeight) textNode.lineHeight = closest.lineHeight;
         }
 
         summary.totalUpdated++;
@@ -847,6 +1045,9 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
           "lineHeight",
           "textStyleId",
         ]);
+
+        const segFonts = segments.map((s) => s.fontName).filter(Boolean);
+        await preloadFonts(segFonts);
 
         for (let s = 0; s < segments.length; s++) {
           const segment = segments[s];
@@ -870,9 +1071,14 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
             await applyRangeStyleAsync(textNode, segment.start, segment.end, style);
           } else if (closest && closest.fontName) {
             await preloadFonts([closest.fontName]);
+            if (typeof textNode.setRangeTextStyleIdAsync === "function") {
+              await textNode.setRangeTextStyleIdAsync(segment.start, segment.end, "");
+            } else {
+              textNode.setRangeTextStyleId(segment.start, segment.end, "");
+            }
             textNode.setRangeFontName(segment.start, segment.end, closest.fontName);
-            textNode.setRangeFontSize(segment.start, segment.end, closest.fontSize);
-            textNode.setRangeLineHeight(segment.start, segment.end, closest.lineHeight);
+            if (closest.fontSize) textNode.setRangeFontSize(segment.start, segment.end, closest.fontSize);
+            if (closest.lineHeight) textNode.setRangeLineHeight(segment.start, segment.end, closest.lineHeight);
           }
         }
 
@@ -914,7 +1120,7 @@ async function saveUserSettings(settings) {
 // ==========================================
 // 9. PLUGIN LIFECYCLE & MESSAGE DISPATCH
 // ==========================================
-figma.showUI(__html__, { width: 360, height: 500, themeColors: true });
+figma.showUI(__html__, { width: 360, height: 460, themeColors: true });
 
 async function broadcastDiscoveredStyles(forceRefresh = false) {
   const styles = await discoverAllStyles(forceRefresh);
@@ -929,7 +1135,7 @@ async function broadcastDiscoveredStyles(forceRefresh = false) {
   });
 }
 
-// Initialize and restore saved settings
+// Initialize and restore saved settings immediately
 (async () => {
   const settings = await loadUserSettings();
   figma.ui.postMessage({
@@ -945,8 +1151,10 @@ figma.ui.onmessage = async (msg) => {
   }
 
   if (msg.type === "rescan-styles") {
+    cachedDiscoveredStyles = null;
+    globalStyleCache.clear();
     await broadcastDiscoveredStyles(true);
-    figma.notify("🔄 Rescanned local and remote styles in document.");
+    figma.notify("🔄 Rescanned text styles.");
   }
 
   if (msg.type === "run-replace-styles") {
@@ -955,7 +1163,6 @@ figma.ui.onmessage = async (msg) => {
       scope: msg.options?.scope || "all",
     };
 
-    // Persist settings on run
     await saveUserSettings(options);
 
     figma.ui.postMessage({ type: "process-start" });
@@ -965,6 +1172,8 @@ figma.ui.onmessage = async (msg) => {
       figma.notify(`⚡ Updated ${summary.totalUpdated} text layer(s)!`);
     } else if (summary.errors.length > 0) {
       figma.notify("⚠️ Process finished with warnings. Check plugin window for logs.");
+    } else {
+      figma.notify("ℹ️ No text layers needed updates.");
     }
 
     figma.ui.postMessage({ type: "process-complete", summary });

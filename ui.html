@@ -16,6 +16,8 @@
       --tag-local-text: #1976d2;
       --tag-remote: #f3e8fd;
       --tag-remote-text: #7b1fa2;
+      --tag-custom: #fef3e6;
+      --tag-custom-text: #d97706;
     }
     * {
       box-sizing: border-box;
@@ -32,6 +34,7 @@
       height: 100vh;
       font-size: 12px;
       user-select: none;
+      overflow: hidden;
     }
     h2 {
       font-size: 14px;
@@ -52,10 +55,12 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 6px;
     }
     .badge-group {
       display: flex;
       gap: 6px;
+      flex-wrap: wrap;
     }
     .badge {
       font-size: 11px;
@@ -87,7 +92,6 @@
       gap: 4px;
       transition: background 0.15s;
       flex: 0 0 auto;
-      margin-left: auto;
     }
     .btn-icon:hover {
       background: rgba(0, 0, 0, 0.05);
@@ -188,6 +192,7 @@
     .checkbox-container input:checked ~ .custom-checkbox svg {
       display: block;
     }
+
     .panel {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -252,7 +257,7 @@
 <body>
   <h2>Sync Text Styles</h2>
   <p class="desc">
-    Detects local and remote text styles in your file and matches text layers to the closest style.
+    Detects and imports local & remote library text styles across your files to sync selected text layers.
   </p>
 
   <div class="stats-card">
@@ -260,12 +265,14 @@
       <span class="badge local" id="badgeLocal">0 Local</span>
       <span class="badge remote" id="badgeRemote">0 Remote</span>
     </div>
-    <button class="btn-icon" id="btnRescan" title="Rescan styles in current file">
-      <svg viewBox="0 0 16 16">
-        <path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z"/>
-      </svg>
-      Rescan
-    </button>
+    <div>
+      <button class="btn-icon" id="btnRescan" title="Rescan styles across document">
+        <svg viewBox="0 0 16 16">
+          <path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z"/>
+        </svg>
+        Rescan
+      </button>
+    </div>
   </div>
 
   <div class="options-group">
@@ -290,13 +297,13 @@
           <polyline points="1.5 5 4.5 8.5 10.5 1.5"></polyline>
         </svg>
       </div>
-      <span>Ignore component instances</span>
+      <span>Ignore component instances (except slots)</span>
     </label>
   </div>
 
   <div class="panel" id="logContainer">
-    <div id="idleState" style="color: var(--text-secondary); text-align: center; margin-top: 25px;">
-      Select frames on canvas and click <b>Update Styles</b>.
+    <div id="idleState" style="color: var(--text-secondary); text-align: center; margin-top: 20px;">
+      Select frames or text layers on canvas and click <b>Update Styles</b>.
     </div>
     <div id="statsState" style="display: none;">
       <div class="stats-row"><span>Total Inspected:</span><span id="statInspected">0</span></div>
