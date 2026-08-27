@@ -59,17 +59,50 @@ function normalizeStyleName(name) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function parseFolderHierarchy(name) {
+  if (!name) {
+    return {
+      hasFolders: false,
+      folderPath: "",
+      folders: [],
+      leafName: "",
+    };
+  }
+  const parts = String(name)
+    .split(/[\/\\]/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  if (parts.length <= 1) {
+    return {
+      hasFolders: false,
+      folderPath: "",
+      folders: [],
+      leafName: parts[0] || String(name).trim(),
+    };
+  }
+
+  const leafName = parts.pop();
+  const folderPath = parts.join(" / ");
+  return {
+    hasFolders: true,
+    folderPath,
+    folders: parts,
+    leafName,
+  };
+}
+
 function getLeafStyleName(name) {
   if (!name) return "";
-  const parts = String(name).split(/[\/\\]/);
-  return parts[parts.length - 1].trim();
+  const parsed = parseFolderHierarchy(name);
+  return parsed.leafName;
 }
 
 function getStyleCategoryOrRoot(name) {
   if (!name) return "";
-  const parts = String(name).split(/[\/\\]/);
-  if (parts.length > 1) {
-    return normalizeStyleName(parts[0]);
+  const parsed = parseFolderHierarchy(name);
+  if (parsed.hasFolders && parsed.folders.length > 0) {
+    return normalizeStyleName(parsed.folders[0]);
   }
   const match = String(name).match(/^(h[1-6]|heading|title|subheading|subtitle|body|paragraph|caption|button|label|display|header)/i);
   if (match) {
@@ -423,8 +456,13 @@ async function discoverAllStyles(forceRefresh = false) {
       globalStyleCache.set(s.id, s);
       if (s.key) globalStyleCache.set(s.key, s);
       if (s.name) globalStyleCache.set(`name__${s.name.toLowerCase()}`, s);
+      const folderInfo = parseFolderHierarchy(s.name);
       list.push({
         name: s.name,
+        leafName: folderInfo.leafName,
+        folderPath: folderInfo.folderPath,
+        folders: folderInfo.folders,
+        hasFolders: folderInfo.hasFolders,
         key: s.key,
         id: s.id,
         fontName: s.fontName,
@@ -452,8 +490,13 @@ async function discoverAllPaintStyles(forceRefresh = false) {
       globalStyleCache.set(s.id, s);
       if (s.key) globalStyleCache.set(s.key, s);
       if (s.name) globalStyleCache.set(`name__${s.name.toLowerCase()}`, s);
+      const folderInfo = parseFolderHierarchy(s.name);
       list.push({
         name: s.name,
+        leafName: folderInfo.leafName,
+        folderPath: folderInfo.folderPath,
+        folders: folderInfo.folders,
+        hasFolders: folderInfo.hasFolders,
         key: s.key,
         id: s.id,
         paints: s.paints,
@@ -571,9 +614,19 @@ async function discoverAllColorVariables(forceRefresh = false, selectedMode = "A
           },
         ];
 
+        const folderInfo = parseFolderHierarchy(v.name);
+        const col = collectionMap.get(v.variableCollectionId);
+        const collectionName = col ? col.name : "";
+
         list.push({
           isVariable: true,
           name: v.name,
+          leafName: folderInfo.leafName,
+          folderPath: folderInfo.folderPath,
+          folders: folderInfo.folders,
+          hasFolders: folderInfo.hasFolders,
+          collectionName: collectionName,
+          collectionId: v.variableCollectionId,
           key: v.key,
           id: v.id,
           paints: mockPaints,
@@ -921,6 +974,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
     textUpdated: 0,
     colorUpdated: 0,
     totalSkipped: 0,
+    appliedDetails: [],
     errors: [],
   };
 
@@ -1003,6 +1057,15 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               await applyNodeStyleAsync(node, style);
               updatedThisNode = true;
               summary.textUpdated++;
+              if (summary.appliedDetails.length < 50) {
+                summary.appliedDetails.push({
+                  layer: node.name,
+                  target: closest.name,
+                  folderPath: closest.folderPath || "",
+                  leafName: closest.leafName || closest.name,
+                  type: "text",
+                });
+              }
             }
           } else {
             const segments = node.getStyledTextSegments([
@@ -1045,10 +1108,12 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
         }
       }
 
-      // Handle Paint Styles and Variables (Fills / Text Colors)
-      if ('fills' in node && node.fills) {
-        if (node.fills !== figma.mixed) {
-          if (Array.isArray(node.fills) && node.fills.length > 0) {
+      // Handle Paint Styles and Variables (Fills)
+      if ('fills' in node && node.fills && node.fills !== figma.mixed && Array.isArray(node.fills) && node.fills.length > 0) {
+        if (node.type !== "TEXT" || node.fillStyleId !== figma.mixed) {
+          // Standard node or uniform text fill
+          const hasVisibleFills = node.fills.some(p => p.visible !== false);
+          if (hasVisibleFills) {
             let existingStyle = null;
             if (typeof node.fillStyleId === "string" && node.fillStyleId.length > 0) {
               existingStyle = await getStyleSafe(node.fillStyleId);
@@ -1079,6 +1144,16 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
                   if (applied) {
                     updatedThisNode = true;
                     summary.colorUpdated++;
+                    if (summary.appliedDetails.length < 50) {
+                      summary.appliedDetails.push({
+                        layer: node.name,
+                        target: closestPaint.name,
+                        folderPath: closestPaint.folderPath || "",
+                        leafName: closestPaint.leafName || closestPaint.name,
+                        collection: closestPaint.collectionName || "",
+                        type: closestPaint.isVariable ? "variable" : "color",
+                      });
+                    }
                   }
                 }
               }
@@ -1251,31 +1326,57 @@ async function broadcastDiscoveredStyles(forceRefresh = false) {
     getAllVariableCollectionsSafe(localVars),
   ]);
 
+  const allItems = [...textStyles, ...colorStyles, ...colorVars];
+  const uniqueFolderPaths = new Set();
+  const varFolderPaths = new Set();
+  const varFoldersByColId = new Map();
+
+  for (const item of allItems) {
+    if (item.hasFolders && item.folderPath) {
+      uniqueFolderPaths.add(item.folderPath);
+    }
+  }
+
+  for (const v of colorVars) {
+    if (v.hasFolders && v.folderPath) {
+      varFolderPaths.add(v.folderPath);
+      const colId = v.collectionId || "default";
+      if (!varFoldersByColId.has(colId)) {
+        varFoldersByColId.set(colId, new Set());
+      }
+      varFoldersByColId.get(colId).add(v.folderPath);
+    }
+  }
+
   const availableModes = [];
   const uniqueNamesSet = new Set();
   const structuredCollections = [];
 
   for (const col of collections) {
-    if (col && col.modes && col.modes.length > 0) {
+    if (col) {
       const colModes = [];
-      for (const m of col.modes) {
-        availableModes.push({
-          id: m.modeId,
-          name: m.name,
-          collectionName: col.name,
-          collectionId: col.id,
-        });
-        colModes.push({
-          id: m.modeId,
-          name: m.name,
-        });
-        uniqueNamesSet.add(m.name);
+      if (col.modes && col.modes.length > 0) {
+        for (const m of col.modes) {
+          availableModes.push({
+            id: m.modeId,
+            name: m.name,
+            collectionName: col.name,
+            collectionId: col.id,
+          });
+          colModes.push({
+            id: m.modeId,
+            name: m.name,
+          });
+          uniqueNamesSet.add(m.name);
+        }
       }
+      const colFolders = Array.from(varFoldersByColId.get(col.id) || []);
       structuredCollections.push({
         id: col.id,
         name: col.name,
         defaultModeId: col.defaultModeId,
         modes: colModes,
+        folders: colFolders,
       });
     }
   }
@@ -1284,6 +1385,9 @@ async function broadcastDiscoveredStyles(forceRefresh = false) {
     type: "styles-detected",
     textCount: textStyles.length,
     colorCount: colorStyles.length + colorVars.length,
+    folderCount: uniqueFolderPaths.size,
+    variableFolderCount: varFolderPaths.size,
+    variableFolders: Array.from(varFolderPaths),
     modes: availableModes,
     collections: structuredCollections,
     uniqueModeNames: Array.from(uniqueNamesSet),

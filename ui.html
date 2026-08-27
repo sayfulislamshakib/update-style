@@ -298,7 +298,7 @@
 
   <div class="options-group">
     <div class="select-container" id="modeSelectContainer" style="display: none;">
-      <label class="select-label" for="selVariableMode">Match Variable Color Mode:</label>
+      <label class="select-label" for="selVariableMode">Match Variable Color Mode / Folder:</label>
       <select class="custom-select" id="selVariableMode">
         <option value="AUTO">Auto / Default Mode</option>
       </select>
@@ -417,12 +417,15 @@
         txtLocalCount.textContent = `${msg.textCount} Text Style${msg.textCount === 1 ? "" : "s"}`;
         colorLocalCount.textContent = `${msg.colorCount} Color Style/Var${msg.colorCount === 1 ? "" : "s"}`;
 
-        if (msg.modes && msg.modes.length > 0) {
+        const hasModes = msg.modes && msg.modes.length > 0;
+        const hasVarFolders = msg.variableFolders && msg.variableFolders.length > 0;
+
+        if (hasModes || hasVarFolders) {
           selVariableMode.innerHTML = `<option value="AUTO">Auto / Default Mode</option>`;
 
           if (msg.uniqueModeNames && msg.uniqueModeNames.length > 0) {
             const grp = document.createElement("optgroup");
-            grp.label = "All Collections (by Name)";
+            grp.label = "All Collections (by Mode Name)";
             msg.uniqueModeNames.forEach((name) => {
               const opt = document.createElement("option");
               opt.value = `NAME:${name}`;
@@ -434,16 +437,40 @@
 
           if (msg.collections && msg.collections.length > 0) {
             msg.collections.forEach((col) => {
-              const grp = document.createElement("optgroup");
-              grp.label = `Collection: ${col.name}`;
-              col.modes.forEach((m) => {
-                const opt = document.createElement("option");
-                opt.value = `${col.id}:${m.id}`;
-                opt.textContent = `${m.name}${col.defaultModeId === m.id ? " (Default)" : ""}`;
-                grp.appendChild(opt);
-              });
-              selVariableMode.appendChild(grp);
+              if (col.modes && col.modes.length > 0) {
+                const grp = document.createElement("optgroup");
+                grp.label = `Modes in: ${col.name}`;
+                col.modes.forEach((m) => {
+                  const opt = document.createElement("option");
+                  opt.value = `${col.id}:${m.id}`;
+                  opt.textContent = `${m.name}${col.defaultModeId === m.id ? " (Default)" : ""}`;
+                  grp.appendChild(opt);
+                });
+                selVariableMode.appendChild(grp);
+              }
+
+              if (col.folders && col.folders.length > 0) {
+                const fGrp = document.createElement("optgroup");
+                fGrp.label = `📁 Variable Folders in: ${col.name}`;
+                col.folders.forEach((folder) => {
+                  const opt = document.createElement("option");
+                  opt.value = `FOLDER:${col.id}:${folder}`;
+                  opt.textContent = `📁 ${folder}`;
+                  fGrp.appendChild(opt);
+                });
+                selVariableMode.appendChild(fGrp);
+              }
             });
+          } else if (hasVarFolders) {
+            const fGrp = document.createElement("optgroup");
+            fGrp.label = `📁 Variable Folders (${msg.variableFolders.length})`;
+            msg.variableFolders.forEach((folder) => {
+              const opt = document.createElement("option");
+              opt.value = `FOLDER:${folder}`;
+              opt.textContent = `📁 ${folder}`;
+              fGrp.appendChild(opt);
+            });
+            selVariableMode.appendChild(fGrp);
           }
 
           modeSelectContainer.style.display = "flex";
@@ -471,6 +498,27 @@
         statTextUpdated.textContent = summary.textUpdated || 0;
         statColorUpdated.textContent = summary.colorUpdated || 0;
         statSkipped.textContent = summary.totalSkipped;
+
+        logList.innerHTML = "";
+
+        if (summary.appliedDetails && summary.appliedDetails.length > 0) {
+          summary.appliedDetails.slice(0, 15).forEach((d) => {
+            const item = document.createElement("div");
+            item.className = "log-item";
+            const folderLabel = d.folderPath ? `<span style="color: var(--text-secondary); font-size: 10px;">📁 ${d.folderPath} / </span>` : "";
+            const collLabel = d.collection ? `<span style="color: #6366f1; font-size: 10px;">[${d.collection}] </span>` : "";
+            item.innerHTML = `<span style="font-weight: 500;">${d.layer}</span> &rarr; ${collLabel}${folderLabel}<span style="font-weight: 500;">${d.leafName}</span>`;
+            logList.appendChild(item);
+          });
+          if (summary.appliedDetails.length > 15) {
+            const more = document.createElement("div");
+            more.className = "log-item";
+            more.style.color = "var(--text-secondary)";
+            more.style.fontStyle = "italic";
+            more.textContent = `+ ${summary.appliedDetails.length - 15} more layers updated...`;
+            logList.appendChild(more);
+          }
+        }
 
         if (summary.errors && summary.errors.length > 0) {
           summary.errors.forEach((err) => {
