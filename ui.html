@@ -239,27 +239,55 @@
       background: rgba(0, 0, 0, 0.04);
     }
 
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+    .select-container {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .select-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .custom-select {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 11px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      outline: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .custom-select:focus {
+      border-color: var(--primary);
     }
   </style>
 </head>
 <body>
-  <h2>Sync Local Text Styles</h2>
+  <h2>Sync Local Styles</h2>
   <p class="desc">
-    Matches and applies your document's local text styles to selected text layers.
+    Matches and applies your document's local text and color styles to selected layers.
   </p>
 
   <div class="stats-card">
     <div class="badge-group">
-      <span class="badge local" id="badgeLocal">
+      <span class="badge local" id="badgeLocalText">
         <span class="badge-dot"></span>
-        <span id="txtLocalCount">0 Local Styles Detected</span>
+        <span id="txtLocalCount">0 Text</span>
+      </span>
+      <span class="badge local" id="badgeLocalColor" style="background: #eef2ff; color: #4338ca;">
+        <span class="badge-dot"></span>
+        <span id="colorLocalCount">0 Color Styles/Vars</span>
       </span>
     </div>
     <div>
-      <button class="btn-icon" id="btnRescan" title="Rescan local text styles in document">
+      <button class="btn-icon" id="btnRescan" title="Rescan local styles in document">
         <svg viewBox="0 0 16 16">
           <path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z"/>
         </svg>
@@ -269,6 +297,13 @@
   </div>
 
   <div class="options-group">
+    <div class="select-container" id="modeSelectContainer" style="display: none;">
+      <label class="select-label" for="selVariableMode">Match Variable Color Mode:</label>
+      <select class="custom-select" id="selVariableMode">
+        <option value="AUTO">Auto / Default Mode</option>
+      </select>
+    </div>
+
     <label class="checkbox-container">
       <input type="checkbox" id="chkIgnoreInstances" checked />
       <div class="custom-checkbox">
@@ -287,6 +322,8 @@
     <div id="statsState" style="display: none;">
       <div class="stats-row"><span>Total Inspected:</span><span id="statInspected">0</span></div>
       <div class="stats-row"><span>Updated:</span><span id="statUpdated" style="color: var(--success);">0</span></div>
+      <div class="stats-row" style="padding-left: 8px; font-size: 11px; color: var(--text-secondary);"><span>↳ Text Styles:</span><span id="statTextUpdated">0</span></div>
+      <div class="stats-row" style="padding-left: 8px; font-size: 11px; color: var(--text-secondary);"><span>↳ Colors (Styles/Vars):</span><span id="statColorUpdated">0</span></div>
       <div class="stats-row"><span>Skipped:</span><span id="statSkipped">0</span></div>
       <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;" />
       <div id="logList"></div>
@@ -303,13 +340,20 @@
     const btnCancel = document.getElementById("btnCancel");
     const btnRescan = document.getElementById("btnRescan");
     const chkIgnoreInstances = document.getElementById("chkIgnoreInstances");
+    const modeSelectContainer = document.getElementById("modeSelectContainer");
+    const selVariableMode = document.getElementById("selVariableMode");
     const txtLocalCount = document.getElementById("txtLocalCount");
+    const colorLocalCount = document.getElementById("colorLocalCount");
     const idleState = document.getElementById("idleState");
     const statsState = document.getElementById("statsState");
     const statInspected = document.getElementById("statInspected");
     const statUpdated = document.getElementById("statUpdated");
+    const statTextUpdated = document.getElementById("statTextUpdated");
+    const statColorUpdated = document.getElementById("statColorUpdated");
     const statSkipped = document.getElementById("statSkipped");
     const logList = document.getElementById("logList");
+
+    let savedSelectedMode = "AUTO";
 
     function saveCurrentSettings() {
       parent.postMessage(
@@ -318,6 +362,7 @@
             type: "save-settings",
             settings: {
               ignoreInstances: chkIgnoreInstances.checked,
+              variableMode: selVariableMode.value,
             },
           },
         },
@@ -326,6 +371,7 @@
     }
 
     chkIgnoreInstances.onchange = saveCurrentSettings;
+    selVariableMode.onchange = saveCurrentSettings;
 
     btnRun.onclick = () => {
       btnRun.disabled = true;
@@ -337,6 +383,7 @@
             type: "run-replace-styles",
             options: {
               ignoreInstances: chkIgnoreInstances.checked,
+              variableMode: selVariableMode.value,
             },
           },
         },
@@ -360,10 +407,52 @@
         if (typeof msg.settings.ignoreInstances === "boolean") {
           chkIgnoreInstances.checked = msg.settings.ignoreInstances;
         }
+        if (msg.settings.variableMode) {
+          savedSelectedMode = msg.settings.variableMode;
+          selVariableMode.value = msg.settings.variableMode;
+        }
       }
 
       if (msg.type === "styles-detected") {
-        txtLocalCount.textContent = `${msg.count} Local Style${msg.count === 1 ? "" : "s"} Detected`;
+        txtLocalCount.textContent = `${msg.textCount} Text Style${msg.textCount === 1 ? "" : "s"}`;
+        colorLocalCount.textContent = `${msg.colorCount} Color Style/Var${msg.colorCount === 1 ? "" : "s"}`;
+
+        if (msg.modes && msg.modes.length > 0) {
+          selVariableMode.innerHTML = `<option value="AUTO">Auto / Default Mode</option>`;
+
+          if (msg.uniqueModeNames && msg.uniqueModeNames.length > 0) {
+            const grp = document.createElement("optgroup");
+            grp.label = "All Collections (by Name)";
+            msg.uniqueModeNames.forEach((name) => {
+              const opt = document.createElement("option");
+              opt.value = `NAME:${name}`;
+              opt.textContent = `Mode: ${name}`;
+              grp.appendChild(opt);
+            });
+            selVariableMode.appendChild(grp);
+          }
+
+          if (msg.collections && msg.collections.length > 0) {
+            msg.collections.forEach((col) => {
+              const grp = document.createElement("optgroup");
+              grp.label = `Collection: ${col.name}`;
+              col.modes.forEach((m) => {
+                const opt = document.createElement("option");
+                opt.value = `${col.id}:${m.id}`;
+                opt.textContent = `${m.name}${col.defaultModeId === m.id ? " (Default)" : ""}`;
+                grp.appendChild(opt);
+              });
+              selVariableMode.appendChild(grp);
+            });
+          }
+
+          modeSelectContainer.style.display = "flex";
+          if (savedSelectedMode) {
+            selVariableMode.value = savedSelectedMode;
+          }
+        } else {
+          modeSelectContainer.style.display = "none";
+        }
       }
 
       if (msg.type === "process-start") {
@@ -379,6 +468,8 @@
         const { summary } = msg;
         statInspected.textContent = summary.totalInspected;
         statUpdated.textContent = summary.totalUpdated;
+        statTextUpdated.textContent = summary.textUpdated || 0;
+        statColorUpdated.textContent = summary.colorUpdated || 0;
         statSkipped.textContent = summary.totalSkipped;
 
         if (summary.errors && summary.errors.length > 0) {

@@ -252,6 +252,7 @@ function findBestMatchingStyle(sourceSpec, localCatalog) {
 const globalLoadedFonts = new Set();
 const globalStyleCache = new Map();
 let cachedDiscoveredStyles = null;
+let cachedDiscoveredPaintStyles = null;
 
 async function getLocalTextStylesSafe() {
   if (typeof figma.getLocalTextStylesAsync === "function") {
@@ -260,9 +261,102 @@ async function getLocalTextStylesSafe() {
   return figma.getLocalTextStyles();
 }
 
+async function getLocalPaintStylesSafe() {
+  if (typeof figma.getLocalPaintStylesAsync === "function") {
+    return await figma.getLocalPaintStylesAsync();
+  }
+  return figma.getLocalPaintStyles();
+}
+
+async function getLocalColorVariablesSafe() {
+  if (typeof figma.variables !== "undefined") {
+    try {
+      if (typeof figma.variables.getLocalVariablesAsync === "function") {
+        const allVars = await figma.variables.getLocalVariablesAsync();
+        return allVars.filter((v) => v.resolvedType === "COLOR" || v.type === "COLOR");
+      }
+    } catch (_) {}
+    try {
+      if (typeof figma.variables.getLocalVariables === "function") {
+        const allVars = figma.variables.getLocalVariables();
+        return allVars.filter((v) => v.resolvedType === "COLOR" || v.type === "COLOR");
+      }
+    } catch (_) {}
+  }
+  return [];
+}
+
+async function getAllVariableCollectionsSafe(localVars = []) {
+  const collectionMap = new Map();
+
+  if (typeof figma.variables !== "undefined" && typeof figma.variables.getLocalVariableCollectionsAsync === "function") {
+    try {
+      const localCols = await figma.variables.getLocalVariableCollectionsAsync();
+      for (const col of localCols) {
+        if (col && col.id) collectionMap.set(col.id, col);
+      }
+    } catch (_) {}
+  }
+
+  for (const v of localVars) {
+    if (v && v.variableCollectionId && !collectionMap.has(v.variableCollectionId)) {
+      if (typeof figma.variables !== "undefined" && typeof figma.variables.getVariableCollectionByIdAsync === "function") {
+        try {
+          const col = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
+          if (col && col.id) collectionMap.set(col.id, col);
+        } catch (_) {}
+      }
+    }
+  }
+
+  try {
+    const selection = figma.currentPage.selection;
+    if (selection && selection.length > 0) {
+      for (const node of selection) {
+        if (node.boundVariables) {
+          for (const key in node.boundVariables) {
+            const bv = node.boundVariables[key];
+            if (Array.isArray(bv)) {
+              for (const item of bv) {
+                if (item && item.id) {
+                  const v = await getStyleSafe(item.id);
+                  if (v && v.variableCollectionId && !collectionMap.has(v.variableCollectionId)) {
+                    const col = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
+                    if (col && col.id) collectionMap.set(col.id, col);
+                  }
+                }
+              }
+            } else if (bv && bv.id) {
+              const v = await getStyleSafe(bv.id);
+              if (v && v.variableCollectionId && !collectionMap.has(v.variableCollectionId)) {
+                const col = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
+                if (col && col.id) collectionMap.set(col.id, col);
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
+  return Array.from(collectionMap.values());
+}
+
 async function getStyleSafe(id) {
   if (!id) return null;
   if (globalStyleCache.has(id)) return globalStyleCache.get(id);
+
+  if (id.startsWith("VariableID:")) {
+    if (typeof figma.variables !== "undefined" && typeof figma.variables.getVariableByIdAsync === "function") {
+      try {
+        const v = await figma.variables.getVariableByIdAsync(id);
+        if (v) {
+          globalStyleCache.set(id, v);
+          return v;
+        }
+      } catch (_) {}
+    }
+  }
 
   try {
     const style =
@@ -270,7 +364,7 @@ async function getStyleSafe(id) {
         ? await figma.getStyleByIdAsync(id)
         : figma.getStyleById(id);
 
-    if (style && style.type === "TEXT") {
+    if (style && (style.type === "TEXT" || style.type === "PAINT")) {
       globalStyleCache.set(id, style);
       if (style.key) globalStyleCache.set(style.key, style);
       if (style.name) globalStyleCache.set(`name__${style.name.toLowerCase()}`, style);
@@ -302,7 +396,7 @@ async function preloadFonts(fontNames = []) {
 async function collectFontsFromTextNodes(nodes) {
   const fonts = [];
   for (const node of nodes) {
-    if (!node || node.hasMissingFont) continue;
+    if (!node || node.type !== 'TEXT' || node.hasMissingFont) continue;
     if (node.fontName !== figma.mixed && node.fontName) {
       fonts.push(node.fontName);
     } else {
@@ -344,6 +438,285 @@ async function discoverAllStyles(forceRefresh = false) {
 
   cachedDiscoveredStyles = list;
   return cachedDiscoveredStyles;
+}
+
+async function discoverAllPaintStyles(forceRefresh = false) {
+  if (cachedDiscoveredPaintStyles && !forceRefresh) {
+    return cachedDiscoveredPaintStyles;
+  }
+
+  const list = [];
+  try {
+    const localStyles = await getLocalPaintStylesSafe();
+    for (const s of localStyles) {
+      globalStyleCache.set(s.id, s);
+      if (s.key) globalStyleCache.set(s.key, s);
+      if (s.name) globalStyleCache.set(`name__${s.name.toLowerCase()}`, s);
+      list.push({
+        name: s.name,
+        key: s.key,
+        id: s.id,
+        paints: s.paints,
+      });
+    }
+  } catch (err) {
+    console.warn("[discoverAllPaintStyles] Error loading local paint styles:", err);
+  }
+
+  cachedDiscoveredPaintStyles = list;
+  return cachedDiscoveredPaintStyles;
+}
+
+let cachedDiscoveredColorVariables = null;
+let lastUsedVariableMode = "AUTO";
+
+async function resolveVariableColor(variable, selectedModeValue, varMap, collectionMap, depth = 0) {
+  if (depth > 8 || !variable || !variable.valuesByMode) return null;
+  const col = collectionMap.get(variable.variableCollectionId);
+
+  let targetModeId = null;
+  if (selectedModeValue && selectedModeValue !== "AUTO") {
+    if (selectedModeValue.startsWith("NAME:")) {
+      const modeNameTarget = selectedModeValue.slice(5).trim().toLowerCase();
+      if (col && col.modes) {
+        const found = col.modes.find((m) => m.name.toLowerCase() === modeNameTarget);
+        if (found && variable.valuesByMode[found.modeId]) {
+          targetModeId = found.modeId;
+        }
+      }
+    } else if (selectedModeValue.includes(":")) {
+      const [colId, modeId] = selectedModeValue.split(":");
+      if (variable.variableCollectionId === colId && variable.valuesByMode[modeId]) {
+        targetModeId = modeId;
+      } else if (col && col.modes) {
+        // Try finding a mode in this collection with the same name as the selected mode
+        const refCol = collectionMap.get(colId);
+        const refMode = refCol?.modes?.find((m) => m.modeId === modeId);
+        if (refMode) {
+          const matchingMode = col.modes.find((m) => m.name.toLowerCase() === refMode.name.toLowerCase());
+          if (matchingMode && variable.valuesByMode[matchingMode.modeId]) {
+            targetModeId = matchingMode.modeId;
+          }
+        }
+      }
+    } else {
+      if (variable.valuesByMode[selectedModeValue]) {
+        targetModeId = selectedModeValue;
+      } else if (col && col.modes) {
+        const matchedMode = col.modes.find(
+          (m) => m.modeId === selectedModeValue || m.name.toLowerCase() === selectedModeValue.toLowerCase()
+        );
+        if (matchedMode && variable.valuesByMode[matchedMode.modeId]) {
+          targetModeId = matchedMode.modeId;
+        }
+      }
+    }
+  }
+
+  if (!targetModeId) {
+    targetModeId = col?.defaultModeId || Object.keys(variable.valuesByMode)[0];
+  }
+
+  const val = variable.valuesByMode[targetModeId];
+  if (!val) return null;
+
+  if (typeof val === "object") {
+    if (val.type === "VARIABLE_ALIAS" && val.id) {
+      let targetVar = varMap.get(val.id);
+      if (!targetVar) {
+        targetVar = await getStyleSafe(val.id);
+      }
+      return await resolveVariableColor(targetVar, selectedModeValue, varMap, collectionMap, depth + 1);
+    }
+    if ("r" in val && "g" in val && "b" in val) {
+      return val;
+    }
+  }
+  return null;
+}
+
+async function discoverAllColorVariables(forceRefresh = false, selectedMode = "AUTO") {
+  if (cachedDiscoveredColorVariables && !forceRefresh && lastUsedVariableMode === selectedMode) {
+    return cachedDiscoveredColorVariables;
+  }
+
+  const list = [];
+  try {
+    const localVars = await getLocalColorVariablesSafe();
+    const collections = await getAllVariableCollectionsSafe(localVars);
+
+    const varMap = new Map();
+    for (const v of localVars) {
+      varMap.set(v.id, v);
+    }
+
+    const collectionMap = new Map();
+    for (const c of collections) {
+      collectionMap.set(c.id, c);
+    }
+
+    for (const v of localVars) {
+      globalStyleCache.set(v.id, v);
+      if (v.key) globalStyleCache.set(v.key, v);
+      if (v.name) globalStyleCache.set(`name__${v.name.toLowerCase()}`, v);
+
+      const colorVal = await resolveVariableColor(v, selectedMode, varMap, collectionMap);
+
+      if (colorVal) {
+        const mockPaints = [
+          {
+            type: "SOLID",
+            color: { r: colorVal.r, g: colorVal.g, b: colorVal.b },
+            opacity: colorVal.a !== undefined ? colorVal.a : 1,
+          },
+        ];
+
+        list.push({
+          isVariable: true,
+          name: v.name,
+          key: v.key,
+          id: v.id,
+          paints: mockPaints,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[discoverAllColorVariables] Error loading local color variables:", err);
+  }
+
+  lastUsedVariableMode = selectedMode;
+  cachedDiscoveredColorVariables = list;
+  return cachedDiscoveredColorVariables;
+}
+
+function calculatePaintMatchScore(sourcePaints, candPaints) {
+  if (!sourcePaints || !candPaints || sourcePaints.length !== candPaints.length) return 10000;
+  
+  let score = 0;
+  for (let i = 0; i < sourcePaints.length; i++) {
+    const s = sourcePaints[i];
+    const c = candPaints[i];
+    if (s.type !== c.type) return 10000;
+    if (s.type === 'SOLID') {
+       const rDiff = s.color.r - c.color.r;
+       const gDiff = s.color.g - c.color.g;
+       const bDiff = s.color.b - c.color.b;
+       const aDiff = (s.opacity !== undefined ? s.opacity : 1) - (c.opacity !== undefined ? c.opacity : 1);
+       score += (rDiff * rDiff + gDiff * gDiff + bDiff * bDiff) * 5000;
+       score += aDiff * aDiff * 5000;
+    } else {
+       score += 5000;
+    }
+  }
+  return score;
+}
+
+function findClosestPaintInCandidates(sourceSpec, candidates) {
+  if (!candidates || candidates.length === 0) return null;
+  let best = candidates[0];
+  let minScore = calculatePaintMatchScore(sourceSpec.paints, best.paints);
+  for (let i = 1; i < candidates.length; i++) {
+    const cand = candidates[i];
+    const score = calculatePaintMatchScore(sourceSpec.paints, cand.paints);
+    if (score < minScore) {
+      minScore = score;
+      best = cand;
+    }
+  }
+  return best;
+}
+
+function findBestMatchingPaintStyle(sourceSpec, localCatalog) {
+  if (!localCatalog || localCatalog.length === 0) return null;
+  const { existingStyle, existingVariable, layerName, paints } = sourceSpec;
+
+  const existing = existingStyle || existingVariable;
+
+  // 1. Direct match with existing style/variable key or id
+  if (existing) {
+    if (existing.key) {
+      const matchByKey = localCatalog.find((c) => c.key === existing.key);
+      if (matchByKey) return matchByKey;
+    }
+    if (existing.id) {
+      const matchById = localCatalog.find((c) => c.id === existing.id);
+      if (matchById) return matchById;
+    }
+
+    // 2. Direct Name Match for Existing Style / Variable
+    if (existing.name) {
+      const existingNameLower = existing.name.toLowerCase().trim();
+      const matchByName = localCatalog.find((c) => c.name && c.name.toLowerCase().trim() === existingNameLower);
+      if (matchByName) return matchByName;
+
+      const normExisting = normalizeStyleName(existing.name);
+      const matchByNorm = localCatalog.find((c) => c.name && normalizeStyleName(c.name) === normExisting);
+      if (matchByNorm) return matchByNorm;
+
+      const leafExisting = normalizeStyleName(getLeafStyleName(existing.name));
+      if (leafExisting && leafExisting.length > 2) {
+        const leafMatches = localCatalog.filter(
+          (c) => c.name && normalizeStyleName(getLeafStyleName(c.name)) === leafExisting
+        );
+        if (leafMatches.length === 1) {
+          return leafMatches[0];
+        } else if (leafMatches.length > 1 && paints) {
+          return findClosestPaintInCandidates(sourceSpec, leafMatches);
+        }
+      }
+
+      // 3. Category Match for Existing Style
+      const existingCat = getStyleCategoryOrRoot(existing.name);
+      if (existingCat) {
+        const sameCategoryCandidates = localCatalog.filter((c) => {
+          if (!c.name) return false;
+          const candCat = getStyleCategoryOrRoot(c.name);
+          return candCat === existingCat || normalizeStyleName(c.name).includes(existingCat);
+        });
+
+        if (sameCategoryCandidates.length > 0 && paints) {
+          const bestCatMatch = findClosestPaintInCandidates(sourceSpec, sameCategoryCandidates);
+          if (bestCatMatch) {
+            const catScore = calculatePaintMatchScore(sourceSpec.paints, bestCatMatch.paints);
+            if (catScore < 200) return bestCatMatch;
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Layer Name Match
+  if (layerName && typeof layerName === "string" && layerName.trim().length > 0) {
+    const trimmedLayerName = layerName.trim();
+    const layerNameLower = trimmedLayerName.toLowerCase();
+
+    const matchByLayerName = localCatalog.find((c) => c.name && c.name.toLowerCase().trim() === layerNameLower);
+    if (matchByLayerName) return matchByLayerName;
+
+    const normLayerName = normalizeStyleName(trimmedLayerName);
+    const matchByNormLayer = localCatalog.find((c) => c.name && normalizeStyleName(c.name) === normLayerName);
+    if (matchByNormLayer) return matchByNormLayer;
+
+    const layerCat = getStyleCategoryOrRoot(trimmedLayerName);
+    if (layerCat) {
+      const sameLayerCatCandidates = localCatalog.filter((c) => {
+        if (!c.name) return false;
+        const candCat = getStyleCategoryOrRoot(c.name);
+        return candCat === layerCat || normalizeStyleName(c.name).includes(layerCat);
+      });
+
+      if (sameLayerCatCandidates.length > 0 && paints) {
+        const bestLayerCatMatch = findClosestPaintInCandidates(sourceSpec, sameLayerCatCandidates);
+        if (bestLayerCatMatch) {
+          const layerScore = calculatePaintMatchScore(sourceSpec.paints, bestLayerCatMatch.paints);
+          if (layerScore < 100) return bestLayerCatMatch;
+        }
+      }
+    }
+  }
+
+  // 5. Visual color difference match
+  return findClosestPaintInCandidates(sourceSpec, localCatalog);
 }
 
 // ==========================================
@@ -394,47 +767,47 @@ function isInsideInstance(node) {
   return false;
 }
 
-function collectTextNodes(selection, ignoreInstances = false) {
-  const textNodes = [];
+function collectEligibleNodes(selection, ignoreInstances = false) {
+  const nodes = [];
   const visitedIds = new Set();
 
   function addNode(node) {
     if (!node || visitedIds.has(node.id)) return;
     visitedIds.add(node.id);
-    textNodes.push(node);
+    nodes.push(node);
+  }
+
+  function isEligible(n) {
+    return ('fills' in n) || ('strokes' in n) || n.type === 'TEXT';
   }
 
   for (let i = 0; i < selection.length; i++) {
     const root = selection[i];
     if (!root) continue;
 
-    // If ignoring instances, skip if the root itself is an instance
     if (ignoreInstances && isInsideInstance(root)) {
       continue;
     }
 
-    // Direct text node in selection
-    if (root.type === "TEXT") {
+    if (isEligible(root)) {
       if (!ignoreInstances || !isInsideInstance(root)) {
         addNode(root);
       }
-      continue;
     }
 
-    // Container selection (FRAME, GROUP, SECTION, COMPONENT, etc.)
-    if (typeof root.findAllWithCriteria === "function") {
-      const found = root.findAllWithCriteria({ types: ["TEXT"] });
+    if (typeof root.findAll === "function") {
+      const found = root.findAll(n => isEligible(n));
       for (let j = 0; j < found.length; j++) {
-        const textNode = found[j];
-        if (ignoreInstances && isInsideInstance(textNode)) {
+        const node = found[j];
+        if (ignoreInstances && isInsideInstance(node)) {
           continue;
         }
-        addNode(textNode);
+        addNode(node);
       }
     }
   }
 
-  return textNodes;
+  return nodes;
 }
 
 async function applyNodeStyleAsync(textNode, style) {
@@ -462,136 +835,378 @@ async function applyRangeStyleAsync(textNode, start, end, style) {
   }
 }
 
+async function ensureNodeFontsLoaded(node) {
+  if (node.type !== "TEXT") return;
+  if (node.hasMissingFont) return;
+  if (node.fontName !== figma.mixed && node.fontName) {
+    await preloadFonts([node.fontName]);
+  } else {
+    try {
+      const segments = node.getStyledTextSegments(["fontName"]);
+      const fonts = segments.map((s) => s.fontName).filter(Boolean);
+      await preloadFonts(fonts);
+    } catch (_) {}
+  }
+}
+
+async function applyFillToNodeOrSegment(node, styleOrVar, isVariable, start = null, end = null) {
+  if (node.type === "TEXT") {
+    await ensureNodeFontsLoaded(node);
+  }
+
+  if (start !== null && end !== null && node.type === "TEXT") {
+    if (isVariable) {
+      if (typeof figma.variables !== "undefined" && typeof figma.variables.setBoundVariableForPaint === "function") {
+        const segFills = node.getRangeFills(start, end);
+        if (Array.isArray(segFills)) {
+          const newPaints = segFills.map((p) => {
+            if (p.type === "SOLID") {
+              return figma.variables.setBoundVariableForPaint(p, "color", styleOrVar);
+            }
+            return p;
+          });
+          if (typeof node.setRangeFillsAsync === "function") {
+            await node.setRangeFillsAsync(start, end, newPaints);
+          } else {
+            node.setRangeFills(start, end, newPaints);
+          }
+          return true;
+        }
+      }
+    } else {
+      if (typeof node.setRangeFillStyleIdAsync === "function") {
+        await node.setRangeFillStyleIdAsync(start, end, styleOrVar.id);
+      } else {
+        node.setRangeFillStyleId(start, end, styleOrVar.id);
+      }
+      return true;
+    }
+  } else {
+    if (isVariable) {
+      if (typeof figma.variables !== "undefined" && typeof figma.variables.setBoundVariableForPaint === "function") {
+        if (Array.isArray(node.fills)) {
+          const newPaints = node.fills.map((p) => {
+            if (p.type === "SOLID") {
+              return figma.variables.setBoundVariableForPaint(p, "color", styleOrVar);
+            }
+            return p;
+          });
+          if (typeof node.setFillsAsync === "function") {
+            await node.setFillsAsync(newPaints);
+          } else {
+            node.fills = newPaints;
+          }
+          return true;
+        }
+      }
+    } else {
+      if (typeof node.setFillStyleIdAsync === "function") {
+        await node.setFillStyleIdAsync(styleOrVar.id);
+      } else {
+        node.fillStyleId = styleOrVar.id;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 // ==========================================
 // 6. HIGH-PERFORMANCE REPLACEMENT PIPELINE
 // ==========================================
-async function applyClosestStylesToSelection(options = { ignoreInstances: true }) {
+async function applyClosestStylesToSelection(options = { ignoreInstances: true, variableMode: "AUTO" }) {
   const summary = {
     totalInspected: 0,
     totalUpdated: 0,
+    textUpdated: 0,
+    colorUpdated: 0,
     totalSkipped: 0,
     errors: [],
   };
 
   const selection = figma.currentPage.selection;
   if (!selection || selection.length === 0) {
-    figma.notify("⚠️ Please select at least one frame or text layer.");
+    figma.notify("⚠️ Please select at least one layer.");
     return summary;
   }
 
   const localStyles = await discoverAllStyles(false);
-  if (localStyles.length === 0) {
-    figma.notify("⚠️ No local text styles found in this document. Please create local text styles first.");
+  const localPaintStyles = await discoverAllPaintStyles(false);
+  const localColorVars = await discoverAllColorVariables(false, options.variableMode || "AUTO");
+  const localColorsAndVars = [...localColorVars, ...localPaintStyles];
+  if (localStyles.length === 0 && localColorsAndVars.length === 0) {
+    figma.notify("⚠️ No local styles or variables found in this document. Please create some first.");
     return summary;
   }
 
-  const textNodes = collectTextNodes(selection, options.ignoreInstances);
+  const nodes = collectEligibleNodes(selection, options.ignoreInstances);
 
-  if (textNodes.length === 0) {
+  if (nodes.length === 0) {
     figma.notify(
       options.ignoreInstances
-        ? "No eligible text layers found (try unchecking 'Ignore component instances')."
-        : "No text layers found in current selection."
+        ? "No eligible layers found (try unchecking 'Ignore component instances')."
+        : "No layers found in current selection."
     );
     return summary;
   }
 
-  // Preload all fonts for the selected nodes & local styles
-  const fontsToLoad = await collectFontsFromTextNodes(textNodes);
+  const fontsToLoad = await collectFontsFromTextNodes(nodes);
   for (const item of localStyles) {
     if (item && item.fontName) fontsToLoad.push(item.fontName);
   }
 
-  const manager = new FastStyleManager(localStyles);
+  const manager = new FastStyleManager([...localStyles, ...localColorsAndVars]);
   await Promise.all([preloadFonts(fontsToLoad), manager.warmup()]);
 
-  // Apply styles with yielding to keep UI 100% smooth
-  for (let i = 0; i < textNodes.length; i++) {
-    // Yield every 25 nodes to prevent any freezing
+  for (let i = 0; i < nodes.length; i++) {
     if (i > 0 && i % 25 === 0) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
-    const textNode = textNodes[i];
+    const node = nodes[i];
     summary.totalInspected++;
 
     try {
-      if (textNode.hasMissingFont) {
-        summary.totalSkipped++;
-        summary.errors.push(`Layer "${textNode.name}" has missing fonts and was skipped.`);
-        continue;
+      let updatedThisNode = false;
+
+      // Handle Text Styles (Typography)
+      if (node.type === "TEXT") {
+        if (node.hasMissingFont) {
+          summary.errors.push(`Layer "${node.name}" has missing fonts and typography sync was skipped.`);
+        } else {
+          const isMixedFont = node.fontName === figma.mixed;
+          const isMixedSize = node.fontSize === figma.mixed;
+          const isMixedLh = node.lineHeight === figma.mixed;
+
+          if (!isMixedFont && !isMixedSize && !isMixedLh) {
+            if (node.fontName) {
+              await preloadFonts([node.fontName]);
+            }
+
+            let existingStyle = null;
+            if (typeof node.textStyleId === "string" && node.textStyleId.length > 0) {
+              existingStyle = await getStyleSafe(node.textStyleId);
+            }
+
+            const sourceSpec = {
+              fontName: node.fontName,
+              fontSize: node.fontSize,
+              lineHeight: node.lineHeight,
+              existingStyle,
+              layerName: node.name,
+            };
+
+            const closest = findBestMatchingStyle(sourceSpec, localStyles);
+            const style = await manager.getResolvedStyleAsync(closest);
+
+            if (style) {
+              await applyNodeStyleAsync(node, style);
+              updatedThisNode = true;
+              summary.textUpdated++;
+            }
+          } else {
+            const segments = node.getStyledTextSegments([
+              "fontName",
+              "fontSize",
+              "lineHeight",
+              "textStyleId",
+            ]);
+
+            const segFonts = segments.map((s) => s.fontName).filter(Boolean);
+            await preloadFonts(segFonts);
+
+            for (let s = 0; s < segments.length; s++) {
+              const segment = segments[s];
+              let segExistingStyle = null;
+              if (typeof segment.textStyleId === "string" && segment.textStyleId.length > 0) {
+                segExistingStyle = await getStyleSafe(segment.textStyleId);
+              }
+
+              const segSpec = {
+                fontName: segment.fontName,
+                fontSize: segment.fontSize,
+                lineHeight: segment.lineHeight,
+                existingStyle: segExistingStyle,
+                layerName: node.name,
+              };
+
+              const closest = findBestMatchingStyle(segSpec, localStyles);
+              const style = await manager.getResolvedStyleAsync(closest);
+
+              if (style) {
+                await applyRangeStyleAsync(node, segment.start, segment.end, style);
+                updatedThisNode = true;
+              }
+            }
+            if (updatedThisNode) {
+              summary.textUpdated++;
+            }
+          }
+        }
       }
 
-      const isMixedFont = textNode.fontName === figma.mixed;
-      const isMixedSize = textNode.fontSize === figma.mixed;
-      const isMixedLh = textNode.lineHeight === figma.mixed;
+      // Handle Paint Styles and Variables (Fills / Text Colors)
+      if ('fills' in node && node.fills) {
+        if (node.fills !== figma.mixed) {
+          if (Array.isArray(node.fills) && node.fills.length > 0) {
+            let existingStyle = null;
+            if (typeof node.fillStyleId === "string" && node.fillStyleId.length > 0) {
+              existingStyle = await getStyleSafe(node.fillStyleId);
+            }
+            let existingVariable = null;
+            const boundVar = node.fills.find(p => p.boundVariables && p.boundVariables.color)?.boundVariables?.color;
+            if (boundVar && boundVar.id) {
+              existingVariable = await getStyleSafe(boundVar.id);
+            }
 
-      if (!isMixedFont && !isMixedSize && !isMixedLh) {
-        if (textNode.fontName) {
-          await preloadFonts([textNode.fontName]);
+            const spec = {
+              paints: node.fills,
+              existingStyle,
+              existingVariable,
+              layerName: node.name,
+            };
+
+            const closestPaint = findBestMatchingPaintStyle(spec, localColorsAndVars);
+            if (closestPaint) {
+              const isAlreadyApplied = closestPaint.isVariable
+                ? node.fills.every(p => p.boundVariables && p.boundVariables.color && p.boundVariables.color.id === closestPaint.id)
+                : node.fillStyleId === closestPaint.id;
+
+              if (!isAlreadyApplied) {
+                const styleOrVar = await manager.getResolvedStyleAsync(closestPaint);
+                if (styleOrVar) {
+                  const applied = await applyFillToNodeOrSegment(node, styleOrVar, closestPaint.isVariable);
+                  if (applied) {
+                    updatedThisNode = true;
+                    summary.colorUpdated++;
+                  }
+                }
+              }
+            }
+          }
+        } else if (node.type === "TEXT") {
+          // Text layer with mixed fill segments
+          try {
+            await ensureNodeFontsLoaded(node);
+            const segments = node.getStyledTextSegments(["fills", "fillStyleId", "boundVariables", "fontName"]);
+            let anySegUpdated = false;
+            for (let seg of segments) {
+              if (seg.fills && Array.isArray(seg.fills) && seg.fills.length > 0) {
+                let existingStyle = null;
+                if (typeof seg.fillStyleId === "string" && seg.fillStyleId.length > 0) {
+                  existingStyle = await getStyleSafe(seg.fillStyleId);
+                }
+                let existingVariable = null;
+                const boundVar = seg.fills.find(p => p.boundVariables && p.boundVariables.color)?.boundVariables?.color;
+                if (boundVar && boundVar.id) {
+                  existingVariable = await getStyleSafe(boundVar.id);
+                }
+
+                const spec = {
+                  paints: seg.fills,
+                  existingStyle,
+                  existingVariable,
+                  layerName: node.name,
+                };
+
+                const closestPaint = findBestMatchingPaintStyle(spec, localColorsAndVars);
+                if (closestPaint) {
+                  const isAlreadyApplied = closestPaint.isVariable
+                    ? seg.fills.every(p => p.boundVariables && p.boundVariables.color && p.boundVariables.color.id === closestPaint.id)
+                    : seg.fillStyleId === closestPaint.id;
+
+                  if (!isAlreadyApplied) {
+                    const styleOrVar = await manager.getResolvedStyleAsync(closestPaint);
+                    if (styleOrVar) {
+                      const applied = await applyFillToNodeOrSegment(node, styleOrVar, closestPaint.isVariable, seg.start, seg.end);
+                      if (applied) {
+                        anySegUpdated = true;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            if (anySegUpdated) {
+              updatedThisNode = true;
+              summary.colorUpdated++;
+            }
+          } catch (e) {
+            console.warn("Error updating mixed text fills:", e);
+          }
         }
+      }
 
+      // Handle Paint Styles and Variables (Strokes)
+      if ('strokes' in node && node.strokes && node.strokes !== figma.mixed && Array.isArray(node.strokes) && node.strokes.length > 0) {
         let existingStyle = null;
-        if (typeof textNode.textStyleId === "string" && textNode.textStyleId.length > 0) {
-          existingStyle = await getStyleSafe(textNode.textStyleId);
+        if (typeof node.strokeStyleId === "string" && node.strokeStyleId.length > 0) {
+          existingStyle = await getStyleSafe(node.strokeStyleId);
+        }
+        let existingVariable = null;
+        const boundVar = node.strokes.find(p => p.boundVariables && p.boundVariables.color)?.boundVariables?.color;
+        if (boundVar && boundVar.id) {
+          existingVariable = await getStyleSafe(boundVar.id);
         }
 
-        const sourceSpec = {
-          fontName: textNode.fontName,
-          fontSize: textNode.fontSize,
-          lineHeight: textNode.lineHeight,
+        const spec = {
+          paints: node.strokes,
           existingStyle,
-          layerName: textNode.name,
+          existingVariable,
+          layerName: node.name,
         };
 
-        const closest = findBestMatchingStyle(sourceSpec, localStyles);
-        const style = await manager.getResolvedStyleAsync(closest);
+        const closestPaint = findBestMatchingPaintStyle(spec, localColorsAndVars);
+        if (closestPaint) {
+          const isAlreadyApplied = closestPaint.isVariable
+            ? node.strokes.every(p => p.boundVariables && p.boundVariables.color && p.boundVariables.color.id === closestPaint.id)
+            : node.strokeStyleId === closestPaint.id;
 
-        if (style) {
-          await applyNodeStyleAsync(textNode, style);
-          summary.totalUpdated++;
-        } else {
-          summary.totalSkipped++;
-        }
-      } else {
-        const segments = textNode.getStyledTextSegments([
-          "fontName",
-          "fontSize",
-          "lineHeight",
-          "textStyleId",
-        ]);
-
-        const segFonts = segments.map((s) => s.fontName).filter(Boolean);
-        await preloadFonts(segFonts);
-
-        for (let s = 0; s < segments.length; s++) {
-          const segment = segments[s];
-          let segExistingStyle = null;
-          if (typeof segment.textStyleId === "string" && segment.textStyleId.length > 0) {
-            segExistingStyle = await getStyleSafe(segment.textStyleId);
-          }
-
-          const segSpec = {
-            fontName: segment.fontName,
-            fontSize: segment.fontSize,
-            lineHeight: segment.lineHeight,
-            existingStyle: segExistingStyle,
-            layerName: textNode.name,
-          };
-
-          const closest = findBestMatchingStyle(segSpec, localStyles);
-          const style = await manager.getResolvedStyleAsync(closest);
-
-          if (style) {
-            await applyRangeStyleAsync(textNode, segment.start, segment.end, style);
+          if (!isAlreadyApplied) {
+            const styleOrVar = await manager.getResolvedStyleAsync(closestPaint);
+            if (styleOrVar) {
+              if (node.type === "TEXT") {
+                await ensureNodeFontsLoaded(node);
+              }
+              if (closestPaint.isVariable) {
+                if (typeof figma.variables !== "undefined" && typeof figma.variables.setBoundVariableForPaint === "function") {
+                  const newPaints = node.strokes.map(p => {
+                    if (p.type === 'SOLID') {
+                      return figma.variables.setBoundVariableForPaint(p, "color", styleOrVar);
+                    }
+                    return p;
+                  });
+                  if (typeof node.setStrokesAsync === "function") {
+                    await node.setStrokesAsync(newPaints);
+                  } else {
+                    node.strokes = newPaints;
+                  }
+                  updatedThisNode = true;
+                  summary.colorUpdated++;
+                }
+              } else {
+                if (typeof node.setStrokeStyleIdAsync === "function") {
+                  await node.setStrokeStyleIdAsync(styleOrVar.id);
+                } else {
+                  node.strokeStyleId = styleOrVar.id;
+                }
+                updatedThisNode = true;
+                summary.colorUpdated++;
+              }
+            }
           }
         }
-
-        summary.totalUpdated++;
       }
+
+      if (updatedThisNode) {
+        summary.totalUpdated++;
+      } else {
+        summary.totalSkipped++;
+      }
+
     } catch (err) {
       summary.totalSkipped++;
-      summary.errors.push(`Failed on "${textNode.name}": ${err?.message || err}`);
+      summary.errors.push(`Failed on "${node.name}": ${err?.message || err}`);
     }
   }
 
@@ -609,10 +1224,11 @@ async function loadUserSettings() {
     if (saved && typeof saved === "object") {
       return {
         ignoreInstances: saved.ignoreInstances !== false,
+        variableMode: saved.variableMode || "AUTO",
       };
     }
   } catch (_) {}
-  return { ignoreInstances: true };
+  return { ignoreInstances: true, variableMode: "AUTO" };
 }
 
 async function saveUserSettings(settings) {
@@ -624,14 +1240,53 @@ async function saveUserSettings(settings) {
 // ==========================================
 // 8. PLUGIN LIFECYCLE & MESSAGE DISPATCH
 // ==========================================
-figma.showUI(__html__, { width: 360, height: 420, themeColors: true });
+figma.showUI(__html__, { width: 360, height: 440, themeColors: true });
 
 async function broadcastDiscoveredStyles(forceRefresh = false) {
-  const styles = await discoverAllStyles(forceRefresh);
+  const localVars = await getLocalColorVariablesSafe();
+  const [textStyles, colorStyles, colorVars, collections] = await Promise.all([
+    discoverAllStyles(forceRefresh),
+    discoverAllPaintStyles(forceRefresh),
+    discoverAllColorVariables(forceRefresh),
+    getAllVariableCollectionsSafe(localVars),
+  ]);
+
+  const availableModes = [];
+  const uniqueNamesSet = new Set();
+  const structuredCollections = [];
+
+  for (const col of collections) {
+    if (col && col.modes && col.modes.length > 0) {
+      const colModes = [];
+      for (const m of col.modes) {
+        availableModes.push({
+          id: m.modeId,
+          name: m.name,
+          collectionName: col.name,
+          collectionId: col.id,
+        });
+        colModes.push({
+          id: m.modeId,
+          name: m.name,
+        });
+        uniqueNamesSet.add(m.name);
+      }
+      structuredCollections.push({
+        id: col.id,
+        name: col.name,
+        defaultModeId: col.defaultModeId,
+        modes: colModes,
+      });
+    }
+  }
 
   figma.ui.postMessage({
     type: "styles-detected",
-    count: styles.length,
+    textCount: textStyles.length,
+    colorCount: colorStyles.length + colorVars.length,
+    modes: availableModes,
+    collections: structuredCollections,
+    uniqueModeNames: Array.from(uniqueNamesSet),
   });
 }
 
@@ -652,14 +1307,17 @@ figma.ui.onmessage = async (msg) => {
 
   if (msg.type === "rescan-styles") {
     cachedDiscoveredStyles = null;
+    cachedDiscoveredPaintStyles = null;
+    cachedDiscoveredColorVariables = null;
     globalStyleCache.clear();
     await broadcastDiscoveredStyles(true);
-    figma.notify("🔄 Rescanned local text styles.");
+    figma.notify("🔄 Rescanned local styles & variable modes.");
   }
 
   if (msg.type === "run-replace-styles") {
     const options = {
       ignoreInstances: msg.options?.ignoreInstances !== false,
+      variableMode: msg.options?.variableMode || "AUTO",
     };
 
     await saveUserSettings(options);
@@ -668,11 +1326,15 @@ figma.ui.onmessage = async (msg) => {
     const summary = await applyClosestStylesToSelection(options);
 
     if (summary.totalUpdated > 0) {
-      figma.notify(`⚡ Updated ${summary.totalUpdated} text layer(s) to local styles!`);
+      const parts = [];
+      if (summary.textUpdated > 0) parts.push(`${summary.textUpdated} text`);
+      if (summary.colorUpdated > 0) parts.push(`${summary.colorUpdated} color`);
+      const details = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+      figma.notify(`⚡ Updated ${summary.totalUpdated} layer(s)${details} with local styles!`);
     } else if (summary.errors.length > 0) {
       figma.notify("⚠️ Process finished with warnings. Check plugin window for logs.");
     } else {
-      figma.notify("ℹ️ No text layers needed updates.");
+      figma.notify("ℹ️ No layers needed updates.");
     }
 
     figma.ui.postMessage({ type: "process-complete", summary });
