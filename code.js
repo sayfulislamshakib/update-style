@@ -820,7 +820,7 @@ function isInsideInstance(node) {
   return false;
 }
 
-function collectEligibleNodes(selection, ignoreInstances = false) {
+function collectEligibleNodes(selection, ignoreInstances = false, ignoreShapes = false) {
   const nodes = [];
   const visitedIds = new Set();
 
@@ -832,6 +832,7 @@ function collectEligibleNodes(selection, ignoreInstances = false) {
 
   function isEligible(n) {
     if (!n || n.type === "SECTION") return false;
+    if (ignoreShapes && n.type !== "TEXT") return false;
     return ('fills' in n) || ('strokes' in n) || n.type === 'TEXT';
   }
 
@@ -968,7 +969,7 @@ async function applyFillToNodeOrSegment(node, styleOrVar, isVariable, start = nu
 // ==========================================
 // 6. HIGH-PERFORMANCE REPLACEMENT PIPELINE
 // ==========================================
-async function applyClosestStylesToSelection(options = { ignoreInstances: true, variableMode: "AUTO" }) {
+async function applyClosestStylesToSelection(options = { ignoreInstances: true, ignoreShapes: false, variableMode: "AUTO" }) {
   const summary = {
     totalInspected: 0,
     totalUpdated: 0,
@@ -994,14 +995,18 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
     return summary;
   }
 
-  const nodes = collectEligibleNodes(selection, options.ignoreInstances);
+  const nodes = collectEligibleNodes(selection, options.ignoreInstances, options.ignoreShapes);
 
   if (nodes.length === 0) {
-    figma.notify(
-      options.ignoreInstances
-        ? "No eligible layers found (try unchecking 'Ignore component instances')."
-        : "No layers found in current selection."
-    );
+    let msg = "No eligible layers found in current selection.";
+    if (options.ignoreShapes && options.ignoreInstances) {
+      msg = "No eligible text layers found (try unchecking 'Ignore shapes' or 'Ignore component instances').";
+    } else if (options.ignoreShapes) {
+      msg = "No text layers found in current selection (try unchecking 'Ignore shapes').";
+    } else if (options.ignoreInstances) {
+      msg = "No eligible layers found (try unchecking 'Ignore component instances').";
+    }
+    figma.notify(msg);
     return summary;
   }
 
@@ -1020,6 +1025,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
 
     const node = nodes[i];
     if (!node || node.type === "SECTION") continue;
+    if (options.ignoreShapes && node.type !== "TEXT") continue;
     summary.totalInspected++;
 
     try {
@@ -1301,11 +1307,12 @@ async function loadUserSettings() {
     if (saved && typeof saved === "object") {
       return {
         ignoreInstances: saved.ignoreInstances !== false,
+        ignoreShapes: saved.ignoreShapes === true,
         variableMode: saved.variableMode || "AUTO",
       };
     }
   } catch (_) {}
-  return { ignoreInstances: true, variableMode: "AUTO" };
+  return { ignoreInstances: true, ignoreShapes: false, variableMode: "AUTO" };
 }
 
 async function saveUserSettings(settings) {
@@ -1317,7 +1324,7 @@ async function saveUserSettings(settings) {
 // ==========================================
 // 8. PLUGIN LIFECYCLE & MESSAGE DISPATCH
 // ==========================================
-figma.showUI(__html__, { width: 360, height: 440, themeColors: true });
+figma.showUI(__html__, { width: 360, height: 460, themeColors: true });
 
 async function broadcastDiscoveredStyles(forceRefresh = false) {
   const localVars = await getLocalColorVariablesSafe();
@@ -1423,6 +1430,7 @@ figma.ui.onmessage = async (msg) => {
   if (msg.type === "run-replace-styles") {
     const options = {
       ignoreInstances: msg.options?.ignoreInstances !== false,
+      ignoreShapes: msg.options?.ignoreShapes === true,
       variableMode: msg.options?.variableMode || "AUTO",
     };
 

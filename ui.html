@@ -313,6 +313,16 @@
       </div>
       <span>Ignore component instances</span>
     </label>
+
+    <label class="checkbox-container">
+      <input type="checkbox" id="chkIgnoreShapes" />
+      <div class="custom-checkbox">
+        <svg viewBox="0 0 12 10">
+          <polyline points="1.5 5 4.5 8.5 10.5 1.5"></polyline>
+        </svg>
+      </div>
+      <span>Ignore shapes (skip shape colors)</span>
+    </label>
   </div>
 
   <div class="panel" id="logContainer">
@@ -340,6 +350,7 @@
     const btnCancel = document.getElementById("btnCancel");
     const btnRescan = document.getElementById("btnRescan");
     const chkIgnoreInstances = document.getElementById("chkIgnoreInstances");
+    const chkIgnoreShapes = document.getElementById("chkIgnoreShapes");
     const modeSelectContainer = document.getElementById("modeSelectContainer");
     const selVariableMode = document.getElementById("selVariableMode");
     const txtLocalCount = document.getElementById("txtLocalCount");
@@ -362,6 +373,7 @@
             type: "save-settings",
             settings: {
               ignoreInstances: chkIgnoreInstances.checked,
+              ignoreShapes: chkIgnoreShapes.checked,
               variableMode: selVariableMode.value,
             },
           },
@@ -371,6 +383,7 @@
     }
 
     chkIgnoreInstances.onchange = saveCurrentSettings;
+    chkIgnoreShapes.onchange = saveCurrentSettings;
     selVariableMode.onchange = saveCurrentSettings;
 
     btnRun.onclick = () => {
@@ -383,6 +396,7 @@
             type: "run-replace-styles",
             options: {
               ignoreInstances: chkIgnoreInstances.checked,
+              ignoreShapes: chkIgnoreShapes.checked,
               variableMode: selVariableMode.value,
             },
           },
@@ -406,6 +420,9 @@
       if (msg.type === "load-settings" && msg.settings) {
         if (typeof msg.settings.ignoreInstances === "boolean") {
           chkIgnoreInstances.checked = msg.settings.ignoreInstances;
+        }
+        if (typeof msg.settings.ignoreShapes === "boolean") {
+          chkIgnoreShapes.checked = msg.settings.ignoreShapes;
         }
         if (msg.settings.variableMode) {
           savedSelectedMode = msg.settings.variableMode;
