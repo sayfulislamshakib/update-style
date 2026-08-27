@@ -825,12 +825,13 @@ function collectEligibleNodes(selection, ignoreInstances = false) {
   const visitedIds = new Set();
 
   function addNode(node) {
-    if (!node || visitedIds.has(node.id)) return;
+    if (!node || visitedIds.has(node.id) || node.type === "SECTION") return;
     visitedIds.add(node.id);
     nodes.push(node);
   }
 
   function isEligible(n) {
+    if (!n || n.type === "SECTION") return false;
     return ('fills' in n) || ('strokes' in n) || n.type === 'TEXT';
   }
 
@@ -1018,6 +1019,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
     }
 
     const node = nodes[i];
+    if (!node || node.type === "SECTION") continue;
     summary.totalInspected++;
 
     try {
