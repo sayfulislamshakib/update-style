@@ -30,62 +30,81 @@
       padding: 16px;
       display: flex;
       flex-direction: column;
+      gap: 12px;
       height: 100vh;
       overflow: hidden;
       font-size: 12px;
       user-select: none;
     }
 
+    .header-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
     h2 {
       font-size: 14px;
       font-weight: 600;
-      margin-bottom: 4px;
     }
 
     p.desc {
       color: var(--text-secondary);
       font-size: 11px;
       line-height: 1.4;
-      margin-bottom: 12px;
     }
 
     .stats-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 10px 12px;
+      padding: 8px 10px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 12px;
+      gap: 8px;
+      flex-shrink: 0;
     }
 
     .badge-group {
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-wrap: nowrap;
+      min-width: 0;
     }
 
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      padding: 3px 8px;
-      border-radius: 12px;
+      padding: 4px 8px;
+      border-radius: 6px;
       font-size: 11px;
       font-weight: 500;
+      white-space: nowrap;
+      line-height: 1.2;
     }
 
-    .badge.local {
+    .badge.local-text {
       background: var(--tag-local);
       color: var(--tag-local-text);
     }
 
-    .badge-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
+    .badge.local-color {
+      background: #eef2ff;
+      color: #4338ca;
+    }
+
+    .badge-icon {
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .badge-count {
+      font-weight: 700;
     }
 
     .btn-icon {
@@ -101,6 +120,8 @@
       padding: 4px 6px;
       border-radius: 4px;
       transition: background 0.15s ease;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .btn-icon:hover {
@@ -117,7 +138,7 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
-      margin-bottom: 12px;
+      flex-shrink: 0;
     }
 
     .checkbox-container {
@@ -179,34 +200,208 @@
       border-radius: 6px;
       padding: 10px;
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
-      margin-bottom: 12px;
       user-select: text;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 3px;
+      border-radius: 6px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 5px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      background: var(--bg);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      font-weight: 600;
     }
 
     .log-item {
-      padding: 4px 0;
+      padding: 6px 8px;
       border-bottom: 1px solid var(--border);
       font-size: 11px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      transition: background 0.12s ease;
+    }
+
+    .log-item.clickable {
+      cursor: pointer;
+    }
+
+    .log-item.clickable:hover {
+      background: rgba(24, 160, 251, 0.08);
+    }
+
+    .log-item.clickable:active {
+      background: rgba(24, 160, 251, 0.16);
+    }
+
+    .log-item-content {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .log-item-meta {
+      font-size: 10px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .btn-icon-focus {
+      flex: 0 0 20px;
+      width: 20px;
+      height: 20px;
+      min-width: 20px;
+      max-width: 20px;
+      padding: 0;
+      border-radius: 4px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+
+    .log-item:hover .btn-icon-focus,
+    .btn-icon-focus:hover {
+      background: rgba(24, 160, 251, 0.12);
+      color: var(--primary);
+    }
+
+    .btn-icon-focus svg {
+      width: 13px;
+      height: 13px;
+      display: block;
+      flex-shrink: 0;
+    }
+
+    .btn-sm-action {
+      flex: 0 0 auto;
+      background: transparent;
+      border: 1px solid var(--border);
+      padding: 3px 8px;
+      font-size: 10px;
+      border-radius: 4px;
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+
+    .btn-sm-action:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: rgba(24, 160, 251, 0.06);
+    }
+
+    .badge-tag {
+      display: inline-block;
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: #e5e7eb;
+      color: #374151;
+      font-weight: 500;
+    }
+
+    .badge-tag.missing-font {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .badge-tag.text-type {
+      background: #e0e7ff;
+      color: #4338ca;
     }
 
     .log-item.error {
       color: #eb5757;
     }
 
+    .stats-container {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
     .stats-row {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 6px;
       font-weight: 500;
+    }
+
+    .divider {
+      border: 0;
+      border-top: 1px solid var(--border);
+      height: 1px;
+      width: 100%;
+    }
+
+    .skipped-header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2px;
+    }
+
+    .log-list-container {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
     }
 
     .actions {
       display: flex;
       gap: 8px;
+      flex-shrink: 0;
     }
 
-    button {
+    .actions button {
       flex: 1;
       padding: 9px 12px;
       font-size: 12px;
@@ -220,40 +415,44 @@
       gap: 6px;
     }
 
-    button.primary {
+    .actions button.primary {
       background: var(--primary);
       color: #fff;
     }
 
-    button.primary:hover:not(:disabled) {
+    .actions button.primary:hover:not(:disabled) {
       background: var(--primary-hover);
     }
 
-    button.secondary {
+    .actions button.secondary {
       background: transparent;
       border-color: var(--border);
       color: var(--text);
     }
 
-    button.secondary:hover:not(:disabled) {
+    .actions button.secondary:hover:not(:disabled) {
       background: rgba(0, 0, 0, 0.04);
     }
 
     .select-container {
       display: flex;
-      flex-direction: column;
-      gap: 4px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
     }
 
     .select-label {
       font-size: 11px;
       color: var(--text-secondary);
       font-weight: 500;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .custom-select {
-      width: 100%;
-      padding: 6px 8px;
+      width: auto;
+      max-width: 65%;
+      padding: 5px 8px;
       font-size: 11px;
       background: var(--surface);
       color: var(--text);
@@ -262,6 +461,7 @@
       outline: none;
       cursor: pointer;
       font-family: inherit;
+      text-overflow: ellipsis;
     }
 
     .custom-select:focus {
@@ -270,20 +470,24 @@
   </style>
 </head>
 <body>
-  <h2>Sync Local Styles</h2>
-  <p class="desc">
-    Matches and applies your document's local text and color styles to selected layers.
-  </p>
+  <div class="header-group">
+    <h2>Sync Local Styles</h2>
+    <p class="desc">
+      Matches and applies your document's local text and color styles to selected layers.
+    </p>
+  </div>
 
   <div class="stats-card">
     <div class="badge-group">
-      <span class="badge local" id="badgeLocalText">
-        <span class="badge-dot"></span>
-        <span id="txtLocalCount">0 Text</span>
+      <span class="badge local-text" id="badgeLocalText" title="Local text styles detected in document">
+        <span class="badge-icon">T</span>
+        <span class="badge-count" id="txtLocalCount">0</span>
+        <span>Text</span>
       </span>
-      <span class="badge local" id="badgeLocalColor" style="background: #eef2ff; color: #4338ca;">
-        <span class="badge-dot"></span>
-        <span id="colorLocalCount">0 Color Styles/Vars</span>
+      <span class="badge local-color" id="badgeLocalColor" title="Local color styles and variables detected in document">
+        <span class="badge-icon">🎨</span>
+        <span class="badge-count" id="colorLocalCount">0</span>
+        <span>Color</span>
       </span>
     </div>
     <div>
@@ -291,16 +495,16 @@
         <svg viewBox="0 0 16 16">
           <path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z"/>
         </svg>
-        Rescan
+        <span>Rescan</span>
       </button>
     </div>
   </div>
 
   <div class="options-group">
     <div class="select-container" id="modeSelectContainer" style="display: none;">
-      <label class="select-label" for="selVariableMode">Match Variable Color Mode / Folder:</label>
+      <label class="select-label" for="selVariableMode">Variable Mode:</label>
       <select class="custom-select" id="selVariableMode">
-        <option value="AUTO">Auto / Default Mode</option>
+        <option value="AUTO">Auto (Default)</option>
       </select>
     </div>
 
@@ -326,17 +530,31 @@
   </div>
 
   <div class="panel" id="logContainer">
-    <div id="idleState" style="color: var(--text-secondary); text-align: center; margin-top: 24px;">
+    <div id="idleState" style="color: var(--text-secondary); text-align: center; padding: 24px 0;">
       Select frames or text layers on canvas and click <b>Update Styles</b>.
     </div>
-    <div id="statsState" style="display: none;">
+    <div id="statsState" class="stats-container" style="display: none;">
       <div class="stats-row"><span>Total Inspected:</span><span id="statInspected">0</span></div>
       <div class="stats-row"><span>Updated:</span><span id="statUpdated" style="color: var(--success);">0</span></div>
       <div class="stats-row" style="padding-left: 8px; font-size: 11px; color: var(--text-secondary);"><span>↳ Text Styles:</span><span id="statTextUpdated">0</span></div>
       <div class="stats-row" style="padding-left: 8px; font-size: 11px; color: var(--text-secondary);"><span>↳ Colors (Styles/Vars):</span><span id="statColorUpdated">0</span></div>
       <div class="stats-row"><span>Skipped:</span><span id="statSkipped">0</span></div>
-      <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;" />
-      <div id="logList"></div>
+      <div class="divider"></div>
+
+      <div class="tab-bar">
+        <button class="tab-btn active" id="tabUpdated">Updated (<span id="tabCountUpdated">0</span>)</button>
+        <button class="tab-btn" id="tabSkipped">Skipped (<span id="tabCountSkipped">0</span>)</button>
+      </div>
+
+      <div id="skippedHeader" class="skipped-header-bar" style="display: none;">
+        <span style="font-size: 10px; color: var(--text-secondary);">Click any layer to focus on canvas</span>
+        <button class="btn-sm-action" id="btnSelectAllSkipped" title="Select all skipped layers on canvas">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5"/><path d="M8 1.5v2.5M8 12v2.5M1.5 8H4M12 8h2.5" stroke-linecap="round"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>
+          <span>Select All</span>
+        </button>
+      </div>
+
+      <div id="logList" class="log-list-container"></div>
     </div>
   </div>
 
@@ -362,9 +580,19 @@
     const statTextUpdated = document.getElementById("statTextUpdated");
     const statColorUpdated = document.getElementById("statColorUpdated");
     const statSkipped = document.getElementById("statSkipped");
+    const tabUpdated = document.getElementById("tabUpdated");
+    const tabSkipped = document.getElementById("tabSkipped");
+    const tabCountUpdated = document.getElementById("tabCountUpdated");
+    const tabCountSkipped = document.getElementById("tabCountSkipped");
+    const skippedHeader = document.getElementById("skippedHeader");
+    const btnSelectAllSkipped = document.getElementById("btnSelectAllSkipped");
     const logList = document.getElementById("logList");
 
+    const FOCUS_ICON_SVG = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5"/><path d="M8 1.5v2.5M8 12v2.5M1.5 8H4M12 8h2.5" stroke-linecap="round"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>`;
+
     let savedSelectedMode = "AUTO";
+    let lastSummary = null;
+    let currentTab = "updated"; // "updated" | "skipped"
 
     function saveCurrentSettings() {
       parent.postMessage(
@@ -385,6 +613,135 @@
     chkIgnoreInstances.onchange = saveCurrentSettings;
     chkIgnoreShapes.onchange = saveCurrentSettings;
     selVariableMode.onchange = saveCurrentSettings;
+
+    tabUpdated.onclick = () => {
+      currentTab = "updated";
+      tabUpdated.classList.add("active");
+      tabSkipped.classList.remove("active");
+      renderLogList();
+    };
+
+    tabSkipped.onclick = () => {
+      currentTab = "skipped";
+      tabSkipped.classList.add("active");
+      tabUpdated.classList.remove("active");
+      renderLogList();
+    };
+
+    btnSelectAllSkipped.onclick = () => {
+      if (!lastSummary || !lastSummary.skippedDetails) return;
+      const nodeIds = lastSummary.skippedDetails.map((d) => d.id).filter(Boolean);
+      if (nodeIds.length > 0) {
+        parent.postMessage({ pluginMessage: { type: "select-all-skipped", nodeIds } }, "*");
+      }
+    };
+
+    function selectSingleNode(nodeId) {
+      if (!nodeId) return;
+      parent.postMessage({ pluginMessage: { type: "select-node", nodeId } }, "*");
+    }
+
+    function renderLogList() {
+      logList.innerHTML = "";
+      if (!lastSummary) return;
+
+      if (currentTab === "updated") {
+        skippedHeader.style.display = "none";
+        const list = lastSummary.appliedDetails || [];
+        if (list.length === 0) {
+          logList.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 12px; font-size: 11px;">No layers were updated in selection.</div>`;
+          return;
+        }
+
+        list.slice(0, 40).forEach((d) => {
+          const item = document.createElement("div");
+          item.className = "log-item clickable";
+          item.title = `Click to focus "${d.layer}" on canvas`;
+          item.onclick = () => selectSingleNode(d.id);
+
+          const folderLabel = d.folderPath ? `<span style="color: var(--text-secondary); font-size: 10px;">📁 ${d.folderPath} / </span>` : "";
+          const collLabel = d.collection ? `<span style="color: #6366f1; font-size: 10px;">[${d.collection}] </span>` : "";
+          const typeBadge = `<span class="badge-tag text-type">${d.type === 'text' ? 'T' : 'Color'}</span>`;
+
+          item.innerHTML = `
+            <div class="log-item-content">
+              <div>${typeBadge} <span style="font-weight: 500;">${d.layer}</span></div>
+              <div class="log-item-meta">&rarr; ${collLabel}${folderLabel}<span style="font-weight: 500;">${d.leafName}</span></div>
+            </div>
+            <button class="btn-icon-focus" title="Focus on canvas">${FOCUS_ICON_SVG}</button>
+          `;
+          logList.appendChild(item);
+        });
+
+        if (list.length > 40) {
+          const more = document.createElement("div");
+          more.style.padding = "6px 8px";
+          more.style.color = "var(--text-secondary)";
+          more.style.fontStyle = "italic";
+          more.style.fontSize = "11px";
+          more.textContent = `+ ${list.length - 40} more updated layers...`;
+          logList.appendChild(more);
+        }
+      } else {
+        // Skipped Tab
+        skippedHeader.style.display = "flex";
+        const list = lastSummary.skippedDetails || [];
+        if (list.length === 0) {
+          logList.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 12px; font-size: 11px;">No layers were skipped.</div>`;
+          return;
+        }
+
+        list.slice(0, 50).forEach((d) => {
+          const item = document.createElement("div");
+          item.className = "log-item clickable";
+          item.title = `Click to focus skipped "${d.layer}" on canvas`;
+          item.onclick = () => selectSingleNode(d.id);
+
+          const isMissingFont = d.reason && d.reason.includes("Missing Font");
+          const reasonTag = isMissingFont
+            ? `<span class="badge-tag missing-font">Missing Font</span>`
+            : `<span class="badge-tag">${d.type === 'TEXT' ? 'Text' : 'Layer'}</span>`;
+
+          const metaText = d.fontInfo ? `${d.fontInfo} &bull; ${d.reason}` : d.reason;
+
+          item.innerHTML = `
+            <div class="log-item-content">
+              <div>${reasonTag} <span style="font-weight: 500;">${d.layer}</span></div>
+              <div class="log-item-meta" title="${metaText}">${metaText}</div>
+            </div>
+            <button class="btn-icon-focus" title="Focus on canvas">${FOCUS_ICON_SVG}</button>
+          `;
+          logList.appendChild(item);
+        });
+
+        if (list.length > 50) {
+          const more = document.createElement("div");
+          more.style.padding = "6px 8px";
+          more.style.color = "var(--text-secondary)";
+          more.style.fontStyle = "italic";
+          more.style.fontSize = "11px";
+          more.textContent = `+ ${list.length - 50} more skipped layers...`;
+          logList.appendChild(more);
+        }
+      }
+
+      if (lastSummary.errors && lastSummary.errors.length > 0) {
+        const errorSection = document.createElement("div");
+        errorSection.style.display = "flex";
+        errorSection.style.flexDirection = "column";
+        errorSection.style.gap = "4px";
+        errorSection.style.borderTop = "1px solid var(--border)";
+        errorSection.style.paddingTop = "6px";
+        lastSummary.errors.forEach((err) => {
+          const errDiv = document.createElement("div");
+          errDiv.className = "log-item error";
+          errDiv.style.fontSize = "10px";
+          errDiv.textContent = `⚠️ ${err}`;
+          errorSection.appendChild(errDiv);
+        });
+        logList.appendChild(errorSection);
+      }
+    }
 
     btnRun.onclick = () => {
       btnRun.disabled = true;
@@ -431,63 +788,49 @@
       }
 
       if (msg.type === "styles-detected") {
-        txtLocalCount.textContent = `${msg.textCount} Text Style${msg.textCount === 1 ? "" : "s"}`;
-        colorLocalCount.textContent = `${msg.colorCount} Color Style/Var${msg.colorCount === 1 ? "" : "s"}`;
+        txtLocalCount.textContent = msg.textCount || 0;
+        colorLocalCount.textContent = msg.colorCount || 0;
 
-        const hasModes = msg.modes && msg.modes.length > 0;
-        const hasVarFolders = msg.variableFolders && msg.variableFolders.length > 0;
+        const collections = msg.collections || [];
+        const hasModes = collections.some((c) => c.modes && c.modes.length > 0) || (msg.modes && msg.modes.length > 0);
 
-        if (hasModes || hasVarFolders) {
-          selVariableMode.innerHTML = `<option value="AUTO">Auto / Default Mode</option>`;
+        if (hasModes) {
+          selVariableMode.innerHTML = `<option value="AUTO">Auto (Default)</option>`;
 
-          if (msg.uniqueModeNames && msg.uniqueModeNames.length > 0) {
-            const grp = document.createElement("optgroup");
-            grp.label = "All Collections (by Mode Name)";
-            msg.uniqueModeNames.forEach((name) => {
-              const opt = document.createElement("option");
-              opt.value = `NAME:${name}`;
-              opt.textContent = `Mode: ${name}`;
-              grp.appendChild(opt);
-            });
-            selVariableMode.appendChild(grp);
-          }
-
-          if (msg.collections && msg.collections.length > 0) {
-            msg.collections.forEach((col) => {
+          if (collections.length > 0) {
+            collections.forEach((col) => {
               if (col.modes && col.modes.length > 0) {
                 const grp = document.createElement("optgroup");
-                grp.label = `Modes in: ${col.name}`;
+                grp.label = col.name || "Collection";
                 col.modes.forEach((m) => {
                   const opt = document.createElement("option");
                   opt.value = `${col.id}:${m.id}`;
-                  opt.textContent = `${m.name}${col.defaultModeId === m.id ? " (Default)" : ""}`;
+                  const isDefault = col.defaultModeId === m.id;
+                  opt.textContent = `${m.name}${isDefault ? " (Default)" : ""}`;
                   grp.appendChild(opt);
                 });
                 selVariableMode.appendChild(grp);
               }
+            });
+          } else if (msg.modes && msg.modes.length > 0) {
+            const modesByCol = new Map();
+            msg.modes.forEach((m) => {
+              const colName = m.collectionName || "Collection";
+              if (!modesByCol.has(colName)) modesByCol.set(colName, []);
+              modesByCol.get(colName).push(m);
+            });
 
-              if (col.folders && col.folders.length > 0) {
-                const fGrp = document.createElement("optgroup");
-                fGrp.label = `📁 Variable Folders in: ${col.name}`;
-                col.folders.forEach((folder) => {
-                  const opt = document.createElement("option");
-                  opt.value = `FOLDER:${col.id}:${folder}`;
-                  opt.textContent = `📁 ${folder}`;
-                  fGrp.appendChild(opt);
-                });
-                selVariableMode.appendChild(fGrp);
-              }
+            modesByCol.forEach((modes, colName) => {
+              const grp = document.createElement("optgroup");
+              grp.label = colName;
+              modes.forEach((m) => {
+                const opt = document.createElement("option");
+                opt.value = `${m.collectionId || ""}:${m.id}`;
+                opt.textContent = m.name;
+                grp.appendChild(opt);
+              });
+              selVariableMode.appendChild(grp);
             });
-          } else if (hasVarFolders) {
-            const fGrp = document.createElement("optgroup");
-            fGrp.label = `📁 Variable Folders (${msg.variableFolders.length})`;
-            msg.variableFolders.forEach((folder) => {
-              const opt = document.createElement("option");
-              opt.value = `FOLDER:${folder}`;
-              opt.textContent = `📁 ${folder}`;
-              fGrp.appendChild(opt);
-            });
-            selVariableMode.appendChild(fGrp);
           }
 
           modeSelectContainer.style.display = "flex";
@@ -510,41 +853,29 @@
         btnRun.textContent = "Update Styles";
 
         const { summary } = msg;
+        lastSummary = summary;
+
         statInspected.textContent = summary.totalInspected;
         statUpdated.textContent = summary.totalUpdated;
         statTextUpdated.textContent = summary.textUpdated || 0;
         statColorUpdated.textContent = summary.colorUpdated || 0;
         statSkipped.textContent = summary.totalSkipped;
 
-        logList.innerHTML = "";
+        tabCountUpdated.textContent = (summary.appliedDetails && summary.appliedDetails.length) || summary.totalUpdated || 0;
+        tabCountSkipped.textContent = (summary.skippedDetails && summary.skippedDetails.length) || summary.totalSkipped || 0;
 
-        if (summary.appliedDetails && summary.appliedDetails.length > 0) {
-          summary.appliedDetails.slice(0, 15).forEach((d) => {
-            const item = document.createElement("div");
-            item.className = "log-item";
-            const folderLabel = d.folderPath ? `<span style="color: var(--text-secondary); font-size: 10px;">📁 ${d.folderPath} / </span>` : "";
-            const collLabel = d.collection ? `<span style="color: #6366f1; font-size: 10px;">[${d.collection}] </span>` : "";
-            item.innerHTML = `<span style="font-weight: 500;">${d.layer}</span> &rarr; ${collLabel}${folderLabel}<span style="font-weight: 500;">${d.leafName}</span>`;
-            logList.appendChild(item);
-          });
-          if (summary.appliedDetails.length > 15) {
-            const more = document.createElement("div");
-            more.className = "log-item";
-            more.style.color = "var(--text-secondary)";
-            more.style.fontStyle = "italic";
-            more.textContent = `+ ${summary.appliedDetails.length - 15} more layers updated...`;
-            logList.appendChild(more);
-          }
+        // If no items were updated but items were skipped, default to the Skipped tab
+        if (summary.totalUpdated === 0 && summary.totalSkipped > 0) {
+          currentTab = "skipped";
+          tabSkipped.classList.add("active");
+          tabUpdated.classList.remove("active");
+        } else {
+          currentTab = "updated";
+          tabUpdated.classList.add("active");
+          tabSkipped.classList.remove("active");
         }
 
-        if (summary.errors && summary.errors.length > 0) {
-          summary.errors.forEach((err) => {
-            const item = document.createElement("div");
-            item.className = "log-item error";
-            item.textContent = err;
-            logList.appendChild(item);
-          });
-        }
+        renderLogList();
       }
     };
   </script>

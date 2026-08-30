@@ -98,16 +98,119 @@ function getLeafStyleName(name) {
   return parsed.leafName;
 }
 
+const GENERIC_FOLDER_NAMES = new Set([
+  "typography",
+  "typographies",
+  "type",
+  "text",
+  "texts",
+  "textstyle",
+  "textstyles",
+  "font",
+  "fonts",
+  "color",
+  "colors",
+  "colour",
+  "colours",
+  "style",
+  "styles",
+  "variable",
+  "variables",
+  "theme",
+  "themes",
+  "light",
+  "dark",
+  "desktop",
+  "mobile",
+  "tablet",
+  "web",
+  "ios",
+  "android",
+  "component",
+  "components",
+  "ui",
+  "token",
+  "tokens",
+  "global",
+  "base",
+  "default",
+  "mode",
+  "modes",
+]);
+
+function getSemanticTokenCategory(str) {
+  if (!str) return "";
+  const s = String(str).toLowerCase();
+
+  // Explicit word boundary or token checks
+  if (/\b(h1)\b|^h1/i.test(s)) return "h1";
+  if (/\b(h2)\b|^h2/i.test(s)) return "h2";
+  if (/\b(h3)\b|^h3/i.test(s)) return "h3";
+  if (/\b(h4)\b|^h4/i.test(s)) return "h4";
+  if (/\b(h5)\b|^h5/i.test(s)) return "h5";
+  if (/\b(h6)\b|^h6/i.test(s)) return "h6";
+
+  if (/\b(overline|overlines|over-line|over_line)\b/i.test(s)) return "overline";
+  if (/\b(caption|captions)\b/i.test(s)) return "caption";
+  if (/\b(footnote|footnotes)\b/i.test(s)) return "footnote";
+  if (/\b(callout|callouts)\b/i.test(s)) return "callout";
+  if (/\b(subheading|subheadings|subheadline|subheadlines|subtitle|subtitles)\b/i.test(s)) return "subheading";
+  if (/\b(heading|headings|headline|headlines|header|headers)\b/i.test(s)) return "heading";
+  if (/\b(display|displays)\b/i.test(s)) return "display";
+  if (/\b(title|titles)\b/i.test(s)) return "title";
+  if (/\b(body|paragraph|paragraphs|content)\b/i.test(s)) return "body";
+  if (/\b(button|buttons|btn)\b/i.test(s)) return "button";
+  if (/\b(label|labels)\b/i.test(s)) return "label";
+  if (/\b(badge|badges|tag|tags)\b/i.test(s)) return "badge";
+  if (/\b(code|mono|monospace)\b/i.test(s)) return "code";
+  if (/\b(quote|blockquote)\b/i.test(s)) return "quote";
+  if (/\b(lead)\b/i.test(s)) return "lead";
+  if (/\b(small|tiny|micro|mini)\b/i.test(s)) return "small";
+  if (/\b(helper|hint|placeholder)\b/i.test(s)) return "helper";
+
+  // Color semantic roles
+  if (/\b(secondary|subtle)\b/i.test(s)) return "secondary";
+  if (/\b(tertiary)\b/i.test(s)) return "tertiary";
+  if (/\b(muted)\b/i.test(s)) return "muted";
+  if (/\b(disabled|inactive)\b/i.test(s)) return "disabled";
+  if (/\b(primary|main)\b/i.test(s)) return "primary";
+  if (/\b(accent|brand)\b/i.test(s)) return "accent";
+  if (/\b(link|links)\b/i.test(s)) return "link";
+  if (/\b(success)\b/i.test(s)) return "success";
+  if (/\b(warning|alert)\b/i.test(s)) return "warning";
+  if (/\b(danger|error|destructive)\b/i.test(s)) return "danger";
+  if (/\b(info|information)\b/i.test(s)) return "info";
+
+  return "";
+}
+
 function getStyleCategoryOrRoot(name) {
   if (!name) return "";
-  const parsed = parseFolderHierarchy(name);
+  const str = String(name).trim();
+
+  // 1. Try finding a known semantic category in the entire name/path
+  const semantic = getSemanticTokenCategory(str);
+  if (semantic) return semantic;
+
+  // 2. If hierarchy exists, inspect non-generic folders
+  const parsed = parseFolderHierarchy(str);
   if (parsed.hasFolders && parsed.folders.length > 0) {
+    for (const folder of parsed.folders) {
+      const norm = normalizeStyleName(folder);
+      if (norm && !GENERIC_FOLDER_NAMES.has(norm)) {
+        const folderSemantic = getSemanticTokenCategory(folder);
+        return folderSemantic || norm;
+      }
+    }
     return normalizeStyleName(parsed.folders[0]);
   }
-  const match = String(name).match(/^(h[1-6]|heading|title|subheading|subtitle|body|paragraph|caption|button|label|display|header)/i);
+
+  // 3. Regex match on leading token (including overline & caption)
+  const match = str.match(/^(h[1-6]|heading|title|subheading|subtitle|body|paragraph|caption|overline|button|label|display|header|footnote|callout|badge|tag|small|code|lead)/i);
   if (match) {
     return normalizeStyleName(match[1]);
   }
+
   return "";
 }
 
@@ -664,13 +767,53 @@ function calculatePaintMatchScore(sourcePaints, candPaints) {
   return score;
 }
 
+function calculateContextualPaintScore(sourceSpec, candidate) {
+  let score = calculatePaintMatchScore(sourceSpec.paints, candidate.paints);
+  if (score >= 10000) return score;
+
+  const targetCategory =
+    sourceSpec.semanticCategory ||
+    (sourceSpec.textStyleName ? getStyleCategoryOrRoot(sourceSpec.textStyleName) : "") ||
+    (sourceSpec.existingStyle ? getStyleCategoryOrRoot(sourceSpec.existingStyle.name) : "") ||
+    (sourceSpec.existingVariable ? getStyleCategoryOrRoot(sourceSpec.existingVariable.name) : "") ||
+    (sourceSpec.layerName ? getStyleCategoryOrRoot(sourceSpec.layerName) : "");
+
+  const candCat = getStyleCategoryOrRoot(candidate.name);
+  const candNameLower = (candidate.name || "").toLowerCase();
+
+  if (targetCategory) {
+    if (candCat === targetCategory || candNameLower.includes(targetCategory)) {
+      // Direct semantic category bonus
+      score -= 50;
+    } else if (
+      (targetCategory === "caption" && (candCat === "overline" || candNameLower.includes("overline"))) ||
+      (targetCategory === "overline" && (candCat === "caption" || candNameLower.includes("caption")))
+    ) {
+      // Heavy penalty to avoid mismatching caption color with overline or overline with caption
+      score += 200;
+    } else if (
+      (targetCategory === "caption" || targetCategory === "overline") &&
+      (candCat === "primary" || candCat === "body" || candCat === "heading")
+    ) {
+      score += 40;
+    }
+  } else {
+    // If target has no specific caption/overline context, de-prioritize caption/overline specific colors when multiple colors tie
+    if (candCat === "caption" || candCat === "overline" || candNameLower.includes("caption") || candNameLower.includes("overline")) {
+      score += 30;
+    }
+  }
+
+  return score;
+}
+
 function findClosestPaintInCandidates(sourceSpec, candidates) {
   if (!candidates || candidates.length === 0) return null;
   let best = candidates[0];
-  let minScore = calculatePaintMatchScore(sourceSpec.paints, best.paints);
+  let minScore = calculateContextualPaintScore(sourceSpec, best);
   for (let i = 1; i < candidates.length; i++) {
     const cand = candidates[i];
-    const score = calculatePaintMatchScore(sourceSpec.paints, cand.paints);
+    const score = calculateContextualPaintScore(sourceSpec, cand);
     if (score < minScore) {
       minScore = score;
       best = cand;
@@ -681,7 +824,7 @@ function findClosestPaintInCandidates(sourceSpec, candidates) {
 
 function findBestMatchingPaintStyle(sourceSpec, localCatalog) {
   if (!localCatalog || localCatalog.length === 0) return null;
-  const { existingStyle, existingVariable, layerName, paints } = sourceSpec;
+  const { existingStyle, existingVariable, layerName, textStyleName, paints } = sourceSpec;
 
   const existing = existingStyle || existingVariable;
 
@@ -712,9 +855,11 @@ function findBestMatchingPaintStyle(sourceSpec, localCatalog) {
           (c) => c.name && normalizeStyleName(getLeafStyleName(c.name)) === leafExisting
         );
         if (leafMatches.length === 1) {
-          return leafMatches[0];
+          const score = paints ? calculatePaintMatchScore(paints, leafMatches[0].paints) : 0;
+          if (score < 300) return leafMatches[0];
         } else if (leafMatches.length > 1 && paints) {
-          return findClosestPaintInCandidates(sourceSpec, leafMatches);
+          const best = findClosestPaintInCandidates(sourceSpec, leafMatches);
+          if (best && calculatePaintMatchScore(paints, best.paints) < 300) return best;
         }
       }
 
@@ -731,44 +876,55 @@ function findBestMatchingPaintStyle(sourceSpec, localCatalog) {
           const bestCatMatch = findClosestPaintInCandidates(sourceSpec, sameCategoryCandidates);
           if (bestCatMatch) {
             const catScore = calculatePaintMatchScore(sourceSpec.paints, bestCatMatch.paints);
-            if (catScore < 200) return bestCatMatch;
+            if (catScore < 250) return bestCatMatch;
           }
         }
       }
     }
   }
 
-  // 4. Layer Name Match
+  // 4. Semantic Category Match from Text Style (for text layers)
+  const targetCategory =
+    sourceSpec.semanticCategory ||
+    (textStyleName ? getStyleCategoryOrRoot(textStyleName) : "") ||
+    (layerName ? getStyleCategoryOrRoot(layerName) : "");
+
+  if (targetCategory && paints) {
+    const semCategoryCandidates = localCatalog.filter((c) => {
+      if (!c.name) return false;
+      const candCat = getStyleCategoryOrRoot(c.name);
+      return candCat === targetCategory || normalizeStyleName(c.name).includes(targetCategory);
+    });
+
+    if (semCategoryCandidates.length > 0) {
+      const bestSemMatch = findClosestPaintInCandidates(sourceSpec, semCategoryCandidates);
+      if (bestSemMatch) {
+        const score = calculatePaintMatchScore(sourceSpec.paints, bestSemMatch.paints);
+        if (score < 250) return bestSemMatch;
+      }
+    }
+  }
+
+  // 5. Layer Name Match (only if color is visually compatible)
   if (layerName && typeof layerName === "string" && layerName.trim().length > 0) {
     const trimmedLayerName = layerName.trim();
     const layerNameLower = trimmedLayerName.toLowerCase();
 
     const matchByLayerName = localCatalog.find((c) => c.name && c.name.toLowerCase().trim() === layerNameLower);
-    if (matchByLayerName) return matchByLayerName;
+    if (matchByLayerName && paints) {
+      const score = calculatePaintMatchScore(paints, matchByLayerName.paints);
+      if (score < 250) return matchByLayerName;
+    }
 
     const normLayerName = normalizeStyleName(trimmedLayerName);
     const matchByNormLayer = localCatalog.find((c) => c.name && normalizeStyleName(c.name) === normLayerName);
-    if (matchByNormLayer) return matchByNormLayer;
-
-    const layerCat = getStyleCategoryOrRoot(trimmedLayerName);
-    if (layerCat) {
-      const sameLayerCatCandidates = localCatalog.filter((c) => {
-        if (!c.name) return false;
-        const candCat = getStyleCategoryOrRoot(c.name);
-        return candCat === layerCat || normalizeStyleName(c.name).includes(layerCat);
-      });
-
-      if (sameLayerCatCandidates.length > 0 && paints) {
-        const bestLayerCatMatch = findClosestPaintInCandidates(sourceSpec, sameLayerCatCandidates);
-        if (bestLayerCatMatch) {
-          const layerScore = calculatePaintMatchScore(sourceSpec.paints, bestLayerCatMatch.paints);
-          if (layerScore < 100) return bestLayerCatMatch;
-        }
-      }
+    if (matchByNormLayer && paints) {
+      const score = calculatePaintMatchScore(paints, matchByNormLayer.paints);
+      if (score < 250) return matchByNormLayer;
     }
   }
 
-  // 5. Visual color difference match
+  // 6. Contextual visual color difference match
   return findClosestPaintInCandidates(sourceSpec, localCatalog);
 }
 
@@ -1030,6 +1186,8 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
 
     try {
       let updatedThisNode = false;
+      let matchedTextStyle = null;
+      let existingTextStyle = null;
 
       // Handle Text Styles (Typography)
       if (node.type === "TEXT") {
@@ -1045,20 +1203,20 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               await preloadFonts([node.fontName]);
             }
 
-            let existingStyle = null;
             if (typeof node.textStyleId === "string" && node.textStyleId.length > 0) {
-              existingStyle = await getStyleSafe(node.textStyleId);
+              existingTextStyle = await getStyleSafe(node.textStyleId);
             }
 
             const sourceSpec = {
               fontName: node.fontName,
               fontSize: node.fontSize,
               lineHeight: node.lineHeight,
-              existingStyle,
+              existingStyle: existingTextStyle,
               layerName: node.name,
             };
 
             const closest = findBestMatchingStyle(sourceSpec, localStyles);
+            matchedTextStyle = closest;
             const style = await manager.getResolvedStyleAsync(closest);
 
             if (style) {
@@ -1066,15 +1224,16 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               updatedThisNode = true;
               summary.textUpdated++;
               if (summary.appliedDetails.length < 50) {
-                summary.appliedDetails.push({
-                  layer: node.name,
-                  target: closest.name,
-                  folderPath: closest.folderPath || "",
-                  leafName: closest.leafName || closest.name,
-                  type: "text",
-                });
-              }
-            }
+    summary.appliedDetails.push({
+      id: node.id,
+      layer: node.name,
+      target: closest.name,
+      folderPath: closest.folderPath || "",
+      leafName: closest.leafName || closest.name,
+      type: "text",
+    });
+  }
+}
           } else {
             const segments = node.getStyledTextSegments([
               "fontName",
@@ -1102,6 +1261,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               };
 
               const closest = findBestMatchingStyle(segSpec, localStyles);
+              segment._matchedTextStyle = closest;
               const style = await manager.getResolvedStyleAsync(closest);
 
               if (style) {
@@ -1115,6 +1275,12 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
           }
         }
       }
+
+      const activeTextStyle = matchedTextStyle || existingTextStyle;
+      const textStyleName = activeTextStyle ? activeTextStyle.name : "";
+      const semanticCategory =
+        (activeTextStyle ? getStyleCategoryOrRoot(activeTextStyle.name) : "") ||
+        getStyleCategoryOrRoot(node.name);
 
       // Handle Paint Styles and Variables (Fills)
       if ('fills' in node && node.fills && node.fills !== figma.mixed && Array.isArray(node.fills) && node.fills.length > 0) {
@@ -1137,6 +1303,8 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               existingStyle,
               existingVariable,
               layerName: node.name,
+              textStyleName,
+              semanticCategory,
             };
 
             const closestPaint = findBestMatchingPaintStyle(spec, localColorsAndVars);
@@ -1154,6 +1322,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
                     summary.colorUpdated++;
                     if (summary.appliedDetails.length < 50) {
                       summary.appliedDetails.push({
+                        id: node.id,
                         layer: node.name,
                         target: closestPaint.name,
                         folderPath: closestPaint.folderPath || "",
@@ -1171,7 +1340,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
           // Text layer with mixed fill segments
           try {
             await ensureNodeFontsLoaded(node);
-            const segments = node.getStyledTextSegments(["fills", "fillStyleId", "boundVariables", "fontName"]);
+            const segments = node.getStyledTextSegments(["fills", "fillStyleId", "boundVariables", "fontName", "textStyleId"]);
             let anySegUpdated = false;
             for (let seg of segments) {
               if (seg.fills && Array.isArray(seg.fills) && seg.fills.length > 0) {
@@ -1185,11 +1354,22 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
                   existingVariable = await getStyleSafe(boundVar.id);
                 }
 
+                let segTextStyle = seg._matchedTextStyle;
+                if (!segTextStyle && typeof seg.textStyleId === "string" && seg.textStyleId.length > 0) {
+                  segTextStyle = await getStyleSafe(seg.textStyleId);
+                }
+                const segTextStyleName = segTextStyle ? segTextStyle.name : textStyleName;
+                const segSemanticCategory =
+                  (segTextStyle ? getStyleCategoryOrRoot(segTextStyle.name) : "") ||
+                  semanticCategory;
+
                 const spec = {
                   paints: seg.fills,
                   existingStyle,
                   existingVariable,
                   layerName: node.name,
+                  textStyleName: segTextStyleName,
+                  semanticCategory: segSemanticCategory,
                 };
 
                 const closestPaint = findBestMatchingPaintStyle(spec, localColorsAndVars);
@@ -1237,6 +1417,8 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
           existingStyle,
           existingVariable,
           layerName: node.name,
+          textStyleName,
+          semanticCategory,
         };
 
         const closestPaint = findBestMatchingPaintStyle(spec, localColorsAndVars);
@@ -1285,11 +1467,39 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
         summary.totalUpdated++;
       } else {
         summary.totalSkipped++;
+        if (summary.skippedDetails.length < 100) {
+          let fontInfo = "";
+          if (node.type === "TEXT") {
+            if (node.fontName && node.fontName !== figma.mixed) {
+              fontInfo = `${node.fontName.family} ${node.fontName.style} (${node.fontSize}px)`;
+            } else if (node.hasMissingFont) {
+              fontInfo = "Missing Font(s)";
+            } else {
+              fontInfo = "Mixed Text";
+            }
+          }
+          summary.skippedDetails.push({
+            id: node.id,
+            layer: node.name,
+            type: node.type,
+            reason: node.hasMissingFont ? "Missing Font" : "No style change needed",
+            fontInfo,
+          });
+        }
       }
 
     } catch (err) {
       summary.totalSkipped++;
       summary.errors.push(`Failed on "${node.name}": ${err?.message || err}`);
+      if (summary.skippedDetails.length < 100) {
+        summary.skippedDetails.push({
+          id: node.id,
+          layer: node.name,
+          type: node.type,
+          reason: `Error: ${err?.message || err}`,
+          fontInfo: "",
+        });
+      }
     }
   }
 
@@ -1324,7 +1534,7 @@ async function saveUserSettings(settings) {
 // ==========================================
 // 8. PLUGIN LIFECYCLE & MESSAGE DISPATCH
 // ==========================================
-figma.showUI(__html__, { width: 360, height: 460, themeColors: true });
+figma.showUI(__html__, { width: 360, height: 580, themeColors: true });
 
 async function broadcastDiscoveredStyles(forceRefresh = false) {
   const localVars = await getLocalColorVariablesSafe();
@@ -1425,6 +1635,49 @@ figma.ui.onmessage = async (msg) => {
     globalStyleCache.clear();
     await broadcastDiscoveredStyles(true);
     figma.notify("🔄 Rescanned local styles & variable modes.");
+  }
+
+  if (msg.type === "select-node" && msg.nodeId) {
+    try {
+      const node =
+        typeof figma.getNodeByIdAsync === "function"
+          ? await figma.getNodeByIdAsync(msg.nodeId)
+          : figma.getNodeById(msg.nodeId);
+
+      if (node && node.type !== "DOCUMENT" && node.type !== "PAGE") {
+        figma.currentPage.selection = [node];
+        figma.viewport.scrollAndZoomIntoView([node]);
+        figma.notify(`🔍 Selected "${node.name}" on canvas`);
+      } else {
+        figma.notify("⚠️ Layer not found or was removed.");
+      }
+    } catch (e) {
+      figma.notify(`⚠️ Could not select layer: ${e.message || e}`);
+    }
+  }
+
+  if (msg.type === "select-all-skipped" && Array.isArray(msg.nodeIds)) {
+    try {
+      const targetNodes = [];
+      for (const id of msg.nodeIds) {
+        const n =
+          typeof figma.getNodeByIdAsync === "function"
+            ? await figma.getNodeByIdAsync(id).catch(() => null)
+            : figma.getNodeById(id);
+        if (n && n.type !== "DOCUMENT" && n.type !== "PAGE") {
+          targetNodes.push(n);
+        }
+      }
+      if (targetNodes.length > 0) {
+        figma.currentPage.selection = targetNodes;
+        figma.viewport.scrollAndZoomIntoView(targetNodes);
+        figma.notify(`🔍 Selected ${targetNodes.length} skipped layer(s) on canvas`);
+      } else {
+        figma.notify("⚠️ No skipped layers could be found on canvas.");
+      }
+    } catch (e) {
+      figma.notify(`⚠️ Could not select layers: ${e.message || e}`);
+    }
   }
 
   if (msg.type === "run-replace-styles") {
