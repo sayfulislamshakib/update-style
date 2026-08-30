@@ -692,7 +692,7 @@
           return;
         }
 
-        list.slice(0, 40).forEach((d) => {
+        list.forEach((d) => {
           const item = document.createElement("div");
           item.className = "log-item clickable";
           item.title = `Click to focus "${d.layer}" on canvas`;
@@ -711,16 +711,6 @@
           `;
           logList.appendChild(item);
         });
-
-        if (list.length > 40) {
-          const more = document.createElement("div");
-          more.style.padding = "6px 8px";
-          more.style.color = "var(--text-secondary)";
-          more.style.fontStyle = "italic";
-          more.style.fontSize = "11px";
-          more.textContent = `+ ${list.length - 40} more updated layers...`;
-          logList.appendChild(more);
-        }
       } else {
         // Skipped Tab
         skippedHeader.style.display = "flex";
@@ -730,7 +720,7 @@
           return;
         }
 
-        list.slice(0, 50).forEach((d) => {
+        list.forEach((d) => {
           const item = document.createElement("div");
           item.className = "log-item clickable";
           item.title = `Click to focus skipped "${d.layer}" on canvas`;
@@ -752,16 +742,6 @@
           `;
           logList.appendChild(item);
         });
-
-        if (list.length > 50) {
-          const more = document.createElement("div");
-          more.style.padding = "6px 8px";
-          more.style.color = "var(--text-secondary)";
-          more.style.fontStyle = "italic";
-          more.style.fontSize = "11px";
-          more.textContent = `+ ${list.length - 50} more skipped layers...`;
-          logList.appendChild(more);
-        }
       }
 
       if (lastSummary.errors && lastSummary.errors.length > 0) {

@@ -1370,16 +1370,14 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               await applyNodeStyleAsync(node, style);
               updatedThisNode = true;
               summary.textUpdated++;
-              if (summary.appliedDetails.length < 50) {
-                summary.appliedDetails.push({
-                  id: node.id,
-                  layer: node.name,
-                  target: closest.name,
-                  folderPath: closest.folderPath || "",
-                  leafName: closest.leafName || closest.name,
-                  type: "text",
-                });
-              }
+              summary.appliedDetails.push({
+                id: node.id,
+                layer: node.name,
+                target: closest.name,
+                folderPath: closest.folderPath || "",
+                leafName: closest.leafName || closest.name,
+                type: "text",
+              });
             }
           } else {
             const segments = node.getStyledTextSegments([
@@ -1414,6 +1412,14 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               if (style) {
                 await applyRangeStyleAsync(node, segment.start, segment.end, style);
                 updatedThisNode = true;
+                summary.appliedDetails.push({
+                  id: node.id,
+                  layer: node.name,
+                  target: closest.name,
+                  folderPath: closest.folderPath || "",
+                  leafName: closest.leafName || closest.name,
+                  type: "text",
+                });
               }
             }
             if (updatedThisNode) {
@@ -1468,17 +1474,15 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
                   if (applied) {
                     updatedThisNode = true;
                     summary.colorUpdated++;
-                    if (summary.appliedDetails.length < 50) {
-                      summary.appliedDetails.push({
-                        id: node.id,
-                        layer: node.name,
-                        target: closestPaint.name,
-                        folderPath: closestPaint.folderPath || "",
-                        leafName: closestPaint.leafName || closestPaint.name,
-                        collection: closestPaint.collectionName || "",
-                        type: closestPaint.isVariable ? "variable" : "color",
-                      });
-                    }
+                    summary.appliedDetails.push({
+                      id: node.id,
+                      layer: node.name,
+                      target: closestPaint.name,
+                      folderPath: closestPaint.folderPath || "",
+                      leafName: closestPaint.leafName || closestPaint.name,
+                      collection: closestPaint.collectionName || "",
+                      type: closestPaint.isVariable ? "variable" : "color",
+                    });
                   }
                 }
               }
@@ -1533,6 +1537,15 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
                       const applied = await applyFillToNodeOrSegment(node, styleOrVar, closestPaint.isVariable, seg.start, seg.end);
                       if (applied) {
                         anySegUpdated = true;
+                        summary.appliedDetails.push({
+                          id: node.id,
+                          layer: node.name,
+                          target: closestPaint.name,
+                          folderPath: closestPaint.folderPath || "",
+                          leafName: closestPaint.leafName || closestPaint.name,
+                          collection: closestPaint.collectionName || "",
+                          type: closestPaint.isVariable ? "variable" : "color",
+                        });
                       }
                     }
                   }
@@ -1598,6 +1611,15 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
                   }
                   updatedThisNode = true;
                   summary.colorUpdated++;
+                  summary.appliedDetails.push({
+                    id: node.id,
+                    layer: node.name,
+                    target: closestPaint.name,
+                    folderPath: closestPaint.folderPath || "",
+                    leafName: closestPaint.leafName || closestPaint.name,
+                    collection: closestPaint.collectionName || "",
+                    type: closestPaint.isVariable ? "variable" : "color",
+                  });
                 }
               } else {
                 if (typeof node.setStrokeStyleIdAsync === "function") {
@@ -1607,6 +1629,15 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
                 }
                 updatedThisNode = true;
                 summary.colorUpdated++;
+                summary.appliedDetails.push({
+                  id: node.id,
+                  layer: node.name,
+                  target: closestPaint.name,
+                  folderPath: closestPaint.folderPath || "",
+                  leafName: closestPaint.leafName || closestPaint.name,
+                  collection: closestPaint.collectionName || "",
+                  type: closestPaint.isVariable ? "variable" : "color",
+                });
               }
             }
           }
@@ -1617,39 +1648,35 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
         summary.totalUpdated++;
       } else {
         summary.totalSkipped++;
-        if (summary.skippedDetails.length < 100) {
-          let fontInfo = "";
-          if (node.type === "TEXT") {
-            if (node.fontName && node.fontName !== figma.mixed) {
-              fontInfo = `${node.fontName.family} ${node.fontName.style} (${node.fontSize}px)`;
-            } else if (node.hasMissingFont) {
-              fontInfo = "Missing Font(s)";
-            } else {
-              fontInfo = "Mixed Text";
-            }
+        let fontInfo = "";
+        if (node.type === "TEXT") {
+          if (node.fontName && node.fontName !== figma.mixed) {
+            fontInfo = `${node.fontName.family} ${node.fontName.style} (${node.fontSize}px)`;
+          } else if (node.hasMissingFont) {
+            fontInfo = "Missing Font(s)";
+          } else {
+            fontInfo = "Mixed Text";
           }
-          summary.skippedDetails.push({
-            id: node.id,
-            layer: node.name,
-            type: node.type,
-            reason: node.hasMissingFont ? "Missing Font" : "No style change needed",
-            fontInfo,
-          });
         }
+        summary.skippedDetails.push({
+          id: node.id,
+          layer: node.name,
+          type: node.type,
+          reason: node.hasMissingFont ? "Missing Font" : "No style change needed",
+          fontInfo,
+        });
       }
 
     } catch (err) {
       summary.totalSkipped++;
       summary.errors.push(`Failed on "${node.name}": ${err?.message || err}`);
-      if (summary.skippedDetails.length < 100) {
-        summary.skippedDetails.push({
-          id: node.id,
-          layer: node.name,
-          type: node.type,
-          reason: `Error: ${err?.message || err}`,
-          fontInfo: "",
-        });
-      }
+      summary.skippedDetails.push({
+        id: node.id,
+        layer: node.name,
+        type: node.type,
+        reason: `Error: ${err?.message || err}`,
+        fontInfo: "",
+      });
     }
   }
 
