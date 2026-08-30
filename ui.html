@@ -594,7 +594,46 @@
     let lastSummary = null;
     let currentTab = "updated"; // "updated" | "skipped"
 
+    function setSelectModeValue(selectEl, targetValue) {
+      if (!targetValue || targetValue === "AUTO") {
+        selectEl.value = "AUTO";
+        return;
+      }
+      selectEl.value = targetValue;
+      if (selectEl.value === targetValue && selectEl.selectedIndex >= 0) return;
+
+      let parsedTarget = null;
+      if (typeof targetValue === "string" && targetValue.startsWith("{")) {
+        try { parsedTarget = JSON.parse(targetValue); } catch (_) {}
+      }
+
+      for (let i = 0; i < selectEl.options.length; i++) {
+        const opt = selectEl.options[i];
+        if (opt.value === targetValue) {
+          selectEl.selectedIndex = i;
+          return;
+        }
+        if (opt.value.startsWith("{")) {
+          try {
+            const optData = JSON.parse(opt.value);
+            if (parsedTarget) {
+              if (optData.modeId === parsedTarget.modeId || (optData.colId === parsedTarget.colId && optData.modeName?.toLowerCase() === parsedTarget.modeName?.toLowerCase())) {
+                selectEl.selectedIndex = i;
+                return;
+              }
+            } else {
+              if (optData.modeId === targetValue || optData.modeName?.toLowerCase() === targetValue.toLowerCase() || `${optData.colId}:${optData.modeId}` === targetValue) {
+                selectEl.selectedIndex = i;
+                return;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
     function saveCurrentSettings() {
+      savedSelectedMode = selVariableMode.value;
       parent.postMessage(
         {
           pluginMessage: {
@@ -783,7 +822,7 @@
         }
         if (msg.settings.variableMode) {
           savedSelectedMode = msg.settings.variableMode;
-          selVariableMode.value = msg.settings.variableMode;
+          setSelectModeValue(selVariableMode, msg.settings.variableMode);
         }
       }
 
@@ -804,7 +843,7 @@
                 grp.label = col.name || "Collection";
                 col.modes.forEach((m) => {
                   const opt = document.createElement("option");
-                  opt.value = `${col.id}:${m.id}`;
+                  opt.value = JSON.stringify({ colId: col.id, modeId: m.id, modeName: m.name });
                   const isDefault = col.defaultModeId === m.id;
                   opt.textContent = `${m.name}${isDefault ? " (Default)" : ""}`;
                   grp.appendChild(opt);
@@ -825,7 +864,7 @@
               grp.label = colName;
               modes.forEach((m) => {
                 const opt = document.createElement("option");
-                opt.value = `${m.collectionId || ""}:${m.id}`;
+                opt.value = JSON.stringify({ colId: m.collectionId || "", modeId: m.id, modeName: m.name });
                 opt.textContent = m.name;
                 grp.appendChild(opt);
               });
@@ -835,7 +874,7 @@
 
           modeSelectContainer.style.display = "flex";
           if (savedSelectedMode) {
-            selVariableMode.value = savedSelectedMode;
+            setSelectModeValue(selVariableMode, savedSelectedMode);
           }
         } else {
           modeSelectContainer.style.display = "none";

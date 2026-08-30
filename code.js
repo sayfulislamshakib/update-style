@@ -411,13 +411,13 @@ async function getLocalColorVariablesSafe() {
         const allVars = await figma.variables.getLocalVariablesAsync();
         return allVars.filter((v) => v.resolvedType === "COLOR" || v.type === "COLOR");
       }
-    } catch (_) {}
+    } catch (_) { }
     try {
       if (typeof figma.variables.getLocalVariables === "function") {
         const allVars = figma.variables.getLocalVariables();
         return allVars.filter((v) => v.resolvedType === "COLOR" || v.type === "COLOR");
       }
-    } catch (_) {}
+    } catch (_) { }
   }
   return [];
 }
@@ -431,7 +431,7 @@ async function getAllVariableCollectionsSafe(localVars = []) {
       for (const col of localCols) {
         if (col && col.id) collectionMap.set(col.id, col);
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   for (const v of localVars) {
@@ -440,7 +440,7 @@ async function getAllVariableCollectionsSafe(localVars = []) {
         try {
           const col = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
           if (col && col.id) collectionMap.set(col.id, col);
-        } catch (_) {}
+        } catch (_) { }
       }
     }
   }
@@ -473,7 +473,7 @@ async function getAllVariableCollectionsSafe(localVars = []) {
         }
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 
   return Array.from(collectionMap.values());
 }
@@ -490,7 +490,7 @@ async function getStyleSafe(id) {
           globalStyleCache.set(id, v);
           return v;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
   }
 
@@ -506,7 +506,7 @@ async function getStyleSafe(id) {
       if (style.name) globalStyleCache.set(`name__${style.name.toLowerCase()}`, style);
       return style;
     }
-  } catch (_) {}
+  } catch (_) { }
   return null;
 }
 
@@ -541,7 +541,7 @@ async function collectFontsFromTextNodes(nodes) {
         for (const seg of segments) {
           if (seg.fontName) fonts.push(seg.fontName);
         }
-      } catch (_) {}
+      } catch (_) { }
     }
   }
   return fonts;
@@ -616,46 +616,96 @@ async function discoverAllPaintStyles(forceRefresh = false) {
 let cachedDiscoveredColorVariables = null;
 let lastUsedVariableMode = "AUTO";
 
+function parseSelectedMode(selectedModeValue, collectionMap = new Map()) {
+  if (!selectedModeValue || selectedModeValue === "AUTO") {
+    return { isAuto: true, colId: null, modeId: null, modeName: null };
+  }
+
+  let colId = null;
+  let modeId = null;
+  let modeName = null;
+
+  if (typeof selectedModeValue === "object") {
+    colId = selectedModeValue.colId || null;
+    modeId = selectedModeValue.modeId || null;
+    modeName = selectedModeValue.modeName || selectedModeValue.name || null;
+  } else if (typeof selectedModeValue === "string") {
+    const trimmed = selectedModeValue.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        colId = parsed.colId || null;
+        modeId = parsed.modeId || null;
+        modeName = parsed.modeName || parsed.name || null;
+      } catch (_) { }
+    } else if (trimmed.startsWith("NAME:")) {
+      modeName = trimmed.slice(5).trim();
+    } else if (trimmed.includes(":::")) {
+      const parts = trimmed.split(":::");
+      colId = parts[0] || null;
+      modeId = parts[1] || null;
+      modeName = parts[2] || null;
+    } else {
+      for (const [cId, col] of collectionMap.entries()) {
+        if (col && col.modes) {
+          for (const m of col.modes) {
+            const mId = m.modeId || m.id;
+            if (mId === trimmed || (m.name && m.name.toLowerCase() === trimmed.toLowerCase())) {
+              colId = cId;
+              modeId = mId;
+              modeName = m.name;
+              break;
+            }
+            if (`${cId}:${mId}` === trimmed) {
+              colId = cId;
+              modeId = mId;
+              modeName = m.name;
+              break;
+            }
+          }
+          if (modeId) break;
+        }
+      }
+
+      if (!modeId) {
+        modeName = trimmed;
+      }
+    }
+  }
+
+  if (colId && modeId && !modeName && collectionMap.has(colId)) {
+    const col = collectionMap.get(colId);
+    const m = col?.modes?.find((m) => (m.modeId || m.id) === modeId);
+    if (m) modeName = m.name;
+  }
+
+  return { isAuto: false, colId, modeId, modeName };
+}
+
 async function resolveVariableColor(variable, selectedModeValue, varMap, collectionMap, depth = 0) {
   if (depth > 8 || !variable || !variable.valuesByMode) return null;
   const col = collectionMap.get(variable.variableCollectionId);
 
+  const parsed = parseSelectedMode(selectedModeValue, collectionMap);
   let targetModeId = null;
-  if (selectedModeValue && selectedModeValue !== "AUTO") {
-    if (selectedModeValue.startsWith("NAME:")) {
-      const modeNameTarget = selectedModeValue.slice(5).trim().toLowerCase();
-      if (col && col.modes) {
-        const found = col.modes.find((m) => m.name.toLowerCase() === modeNameTarget);
-        if (found && variable.valuesByMode[found.modeId]) {
-          targetModeId = found.modeId;
-        }
+
+  if (!parsed.isAuto) {
+    // 1. Direct match if variable collection matches selected collection
+    if (parsed.colId && variable.variableCollectionId === parsed.colId && parsed.modeId && variable.valuesByMode[parsed.modeId] !== undefined) {
+      targetModeId = parsed.modeId;
+    }
+    // 2. Match by mode name across collections (e.g. "Dark", "Light")
+    else if (parsed.modeName && col && col.modes) {
+      const modeNameLower = parsed.modeName.toLowerCase();
+      const matchedMode = col.modes.find((m) => m.name && m.name.toLowerCase() === modeNameLower);
+      const mId = matchedMode ? (matchedMode.modeId || matchedMode.id) : null;
+      if (mId && variable.valuesByMode[mId] !== undefined) {
+        targetModeId = mId;
       }
-    } else if (selectedModeValue.includes(":")) {
-      const [colId, modeId] = selectedModeValue.split(":");
-      if (variable.variableCollectionId === colId && variable.valuesByMode[modeId]) {
-        targetModeId = modeId;
-      } else if (col && col.modes) {
-        // Try finding a mode in this collection with the same name as the selected mode
-        const refCol = collectionMap.get(colId);
-        const refMode = refCol?.modes?.find((m) => m.modeId === modeId);
-        if (refMode) {
-          const matchingMode = col.modes.find((m) => m.name.toLowerCase() === refMode.name.toLowerCase());
-          if (matchingMode && variable.valuesByMode[matchingMode.modeId]) {
-            targetModeId = matchingMode.modeId;
-          }
-        }
-      }
-    } else {
-      if (variable.valuesByMode[selectedModeValue]) {
-        targetModeId = selectedModeValue;
-      } else if (col && col.modes) {
-        const matchedMode = col.modes.find(
-          (m) => m.modeId === selectedModeValue || m.name.toLowerCase() === selectedModeValue.toLowerCase()
-        );
-        if (matchedMode && variable.valuesByMode[matchedMode.modeId]) {
-          targetModeId = matchedMode.modeId;
-        }
-      }
+    }
+    // 3. Fallback to modeId if present in valuesByMode
+    if (!targetModeId && parsed.modeId && variable.valuesByMode[parsed.modeId] !== undefined) {
+      targetModeId = parsed.modeId;
     }
   }
 
@@ -664,13 +714,21 @@ async function resolveVariableColor(variable, selectedModeValue, varMap, collect
   }
 
   const val = variable.valuesByMode[targetModeId];
-  if (!val) return null;
+  if (val === undefined || val === null) return null;
 
   if (typeof val === "object") {
     if (val.type === "VARIABLE_ALIAS" && val.id) {
       let targetVar = varMap.get(val.id);
       if (!targetVar) {
         targetVar = await getStyleSafe(val.id);
+      }
+      if (targetVar && targetVar.variableCollectionId && !collectionMap.has(targetVar.variableCollectionId)) {
+        if (typeof figma.variables !== "undefined" && typeof figma.variables.getVariableCollectionByIdAsync === "function") {
+          try {
+            const c = await figma.variables.getVariableCollectionByIdAsync(targetVar.variableCollectionId);
+            if (c && c.id) collectionMap.set(c.id, c);
+          } catch (_) { }
+        }
       }
       return await resolveVariableColor(targetVar, selectedModeValue, varMap, collectionMap, depth + 1);
     }
@@ -682,7 +740,8 @@ async function resolveVariableColor(variable, selectedModeValue, varMap, collect
 }
 
 async function discoverAllColorVariables(forceRefresh = false, selectedMode = "AUTO") {
-  if (cachedDiscoveredColorVariables && !forceRefresh && lastUsedVariableMode === selectedMode) {
+  const modeKey = typeof selectedMode === "object" ? JSON.stringify(selectedMode) : String(selectedMode);
+  if (cachedDiscoveredColorVariables && !forceRefresh && lastUsedVariableMode === modeKey) {
     return cachedDiscoveredColorVariables;
   }
 
@@ -700,6 +759,8 @@ async function discoverAllColorVariables(forceRefresh = false, selectedMode = "A
     for (const c of collections) {
       collectionMap.set(c.id, c);
     }
+
+    const parsedSelectedMode = parseSelectedMode(selectedMode, collectionMap);
 
     for (const v of localVars) {
       globalStyleCache.set(v.id, v);
@@ -720,6 +781,39 @@ async function discoverAllColorVariables(forceRefresh = false, selectedMode = "A
         const folderInfo = parseFolderHierarchy(v.name);
         const col = collectionMap.get(v.variableCollectionId);
         const collectionName = col ? col.name : "";
+        const colNameLower = (collectionName || "").toLowerCase().trim();
+
+        let isAlias = false;
+        if (v.valuesByMode) {
+          for (const mId in v.valuesByMode) {
+            const mVal = v.valuesByMode[mId];
+            if (mVal && typeof mVal === "object" && mVal.type === "VARIABLE_ALIAS") {
+              isAlias = true;
+              break;
+            }
+          }
+        }
+
+        const isFoundation =
+          colNameLower.includes("foundation") ||
+          colNameLower.includes("primitive") ||
+          colNameLower.includes("base") ||
+          colNameLower.includes("raw") ||
+          colNameLower.includes("palette") ||
+          colNameLower.includes("global") ||
+          colNameLower.includes("core");
+
+        const isSemantic =
+          colNameLower.includes("mode") ||
+          colNameLower.includes("alias") ||
+          colNameLower.includes("semantic") ||
+          colNameLower.includes("theme") ||
+          colNameLower.includes("brand") ||
+          colNameLower.includes("token") ||
+          colNameLower.includes("component") ||
+          isAlias;
+
+        const isFromSelectedCol = Boolean(!parsedSelectedMode.isAuto && parsedSelectedMode.colId && v.variableCollectionId === parsedSelectedMode.colId);
 
         list.push({
           isVariable: true,
@@ -730,38 +824,50 @@ async function discoverAllColorVariables(forceRefresh = false, selectedMode = "A
           hasFolders: folderInfo.hasFolders,
           collectionName: collectionName,
           collectionId: v.variableCollectionId,
+          isAlias,
+          isFoundation,
+          isSemantic,
+          isFromSelectedCol,
           key: v.key,
           id: v.id,
           paints: mockPaints,
         });
       }
     }
+
+    // Sort catalog so selected collection and semantic/alias tokens appear before raw foundation tokens
+    list.sort((a, b) => {
+      if (a.isFromSelectedCol !== b.isFromSelectedCol) return a.isFromSelectedCol ? -1 : 1;
+      if (a.isSemantic !== b.isSemantic) return a.isSemantic ? -1 : 1;
+      if (a.isFoundation !== b.isFoundation) return a.isFoundation ? 1 : -1;
+      return 0;
+    });
   } catch (err) {
     console.warn("[discoverAllColorVariables] Error loading local color variables:", err);
   }
 
-  lastUsedVariableMode = selectedMode;
+  lastUsedVariableMode = modeKey;
   cachedDiscoveredColorVariables = list;
   return cachedDiscoveredColorVariables;
 }
 
 function calculatePaintMatchScore(sourcePaints, candPaints) {
   if (!sourcePaints || !candPaints || sourcePaints.length !== candPaints.length) return 10000;
-  
+
   let score = 0;
   for (let i = 0; i < sourcePaints.length; i++) {
     const s = sourcePaints[i];
     const c = candPaints[i];
     if (s.type !== c.type) return 10000;
     if (s.type === 'SOLID') {
-       const rDiff = s.color.r - c.color.r;
-       const gDiff = s.color.g - c.color.g;
-       const bDiff = s.color.b - c.color.b;
-       const aDiff = (s.opacity !== undefined ? s.opacity : 1) - (c.opacity !== undefined ? c.opacity : 1);
-       score += (rDiff * rDiff + gDiff * gDiff + bDiff * bDiff) * 5000;
-       score += aDiff * aDiff * 5000;
+      const rDiff = s.color.r - c.color.r;
+      const gDiff = s.color.g - c.color.g;
+      const bDiff = s.color.b - c.color.b;
+      const aDiff = (s.opacity !== undefined ? s.opacity : 1) - (c.opacity !== undefined ? c.opacity : 1);
+      score += (rDiff * rDiff + gDiff * gDiff + bDiff * bDiff) * 5000;
+      score += aDiff * aDiff * 5000;
     } else {
-       score += 5000;
+      score += 5000;
     }
   }
   return score;
@@ -771,6 +877,29 @@ function calculateContextualPaintScore(sourceSpec, candidate) {
   let score = calculatePaintMatchScore(sourceSpec.paints, candidate.paints);
   if (score >= 10000) return score;
 
+  const selMode = sourceSpec.selectedModeInfo;
+
+  // 1. Prioritize candidate from user's specifically selected collection or mode
+  if (selMode && !selMode.isAuto) {
+    if (selMode.colId && candidate.collectionId === selMode.colId) {
+      score -= 500; // Strong bonus for user's selected collection
+    } else if (selMode.modeName && candidate.collectionName) {
+      const colNameLower = candidate.collectionName.toLowerCase();
+      if (colNameLower.includes(selMode.modeName.toLowerCase())) {
+        score -= 300;
+      }
+    }
+  }
+
+  // 2. Prioritize Semantic / Alias / Mode collections over Foundation / Primitives
+  if (candidate.isSemantic || candidate.isAlias) {
+    score -= 200;
+  }
+  if (candidate.isFoundation) {
+    score += 600; // Heavy penalty for raw/primitive/foundation colors so semantic tokens win
+  }
+
+  // 3. Category match bonuses
   const targetCategory =
     sourceSpec.semanticCategory ||
     (sourceSpec.textStyleName ? getStyleCategoryOrRoot(sourceSpec.textStyleName) : "") ||
@@ -784,18 +913,18 @@ function calculateContextualPaintScore(sourceSpec, candidate) {
   if (targetCategory) {
     if (candCat === targetCategory || candNameLower.includes(targetCategory)) {
       // Direct semantic category bonus
-      score -= 50;
+      score -= 100;
     } else if (
       (targetCategory === "caption" && (candCat === "overline" || candNameLower.includes("overline"))) ||
       (targetCategory === "overline" && (candCat === "caption" || candNameLower.includes("caption")))
     ) {
       // Heavy penalty to avoid mismatching caption color with overline or overline with caption
-      score += 200;
+      score += 300;
     } else if (
       (targetCategory === "caption" || targetCategory === "overline") &&
       (candCat === "primary" || candCat === "body" || candCat === "heading")
     ) {
-      score += 40;
+      score += 50;
     }
   } else {
     // If target has no specific caption/overline context, de-prioritize caption/overline specific colors when multiple colors tie
@@ -824,12 +953,22 @@ function findClosestPaintInCandidates(sourceSpec, candidates) {
 
 function findBestMatchingPaintStyle(sourceSpec, localCatalog) {
   if (!localCatalog || localCatalog.length === 0) return null;
-  const { existingStyle, existingVariable, layerName, textStyleName, paints } = sourceSpec;
+  const { existingStyle, existingVariable, layerName, textStyleName, paints, selectedModeInfo } = sourceSpec;
 
   const existing = existingStyle || existingVariable;
 
-  // 1. Direct match with existing style/variable key or id
-  if (existing) {
+  // If existing is from Foundation or if a different mode/collection is selected,
+  // do not blindly lock into the existing Foundation variable
+  const isSelectedModeActive = selectedModeInfo && !selectedModeInfo.isAuto && selectedModeInfo.colId;
+  const existingMatchesSelectedCol = existingVariable && isSelectedModeActive && existingVariable.variableCollectionId === selectedModeInfo.colId;
+  const isExistingFoundation = existing && existing.name && (
+    existing.name.toLowerCase().includes("foundation") ||
+    existing.name.toLowerCase().includes("primitive") ||
+    existing.name.toLowerCase().includes("base")
+  );
+
+  // 1. Direct match with existing style/variable key or id (only if not an existing foundation token when a specific mode/collection is selected)
+  if (existing && (!isSelectedModeActive || existingMatchesSelectedCol) && !isExistingFoundation) {
     if (existing.key) {
       const matchByKey = localCatalog.find((c) => c.key === existing.key);
       if (matchByKey) return matchByKey;
@@ -1056,7 +1195,7 @@ async function ensureNodeFontsLoaded(node) {
       const segments = node.getStyledTextSegments(["fontName"]);
       const fonts = segments.map((s) => s.fontName).filter(Boolean);
       await preloadFonts(fonts);
-    } catch (_) {}
+    } catch (_) { }
   }
 }
 
@@ -1142,6 +1281,14 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
     return summary;
   }
 
+  const localVars = await getLocalColorVariablesSafe();
+  const collections = await getAllVariableCollectionsSafe(localVars);
+  const collectionMap = new Map();
+  for (const c of collections) {
+    if (c && c.id) collectionMap.set(c.id, c);
+  }
+  const selectedModeInfo = parseSelectedMode(options.variableMode || "AUTO", collectionMap);
+
   const localStyles = await discoverAllStyles(false);
   const localPaintStyles = await discoverAllPaintStyles(false);
   const localColorVars = await discoverAllColorVariables(false, options.variableMode || "AUTO");
@@ -1224,16 +1371,16 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               updatedThisNode = true;
               summary.textUpdated++;
               if (summary.appliedDetails.length < 50) {
-    summary.appliedDetails.push({
-      id: node.id,
-      layer: node.name,
-      target: closest.name,
-      folderPath: closest.folderPath || "",
-      leafName: closest.leafName || closest.name,
-      type: "text",
-    });
-  }
-}
+                summary.appliedDetails.push({
+                  id: node.id,
+                  layer: node.name,
+                  target: closest.name,
+                  folderPath: closest.folderPath || "",
+                  leafName: closest.leafName || closest.name,
+                  type: "text",
+                });
+              }
+            }
           } else {
             const segments = node.getStyledTextSegments([
               "fontName",
@@ -1305,6 +1452,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               layerName: node.name,
               textStyleName,
               semanticCategory,
+              selectedModeInfo,
             };
 
             const closestPaint = findBestMatchingPaintStyle(spec, localColorsAndVars);
@@ -1370,6 +1518,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
                   layerName: node.name,
                   textStyleName: segTextStyleName,
                   semanticCategory: segSemanticCategory,
+                  selectedModeInfo,
                 };
 
                 const closestPaint = findBestMatchingPaintStyle(spec, localColorsAndVars);
@@ -1419,6 +1568,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
           layerName: node.name,
           textStyleName,
           semanticCategory,
+          selectedModeInfo,
         };
 
         const closestPaint = findBestMatchingPaintStyle(spec, localColorsAndVars);
@@ -1503,6 +1653,59 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
     }
   }
 
+  // If a specific variable mode was selected, set explicit variable mode on selection root and container nodes
+  if (options.variableMode && options.variableMode !== "AUTO") {
+    try {
+      const localVars = await getLocalColorVariablesSafe();
+      const collections = await getAllVariableCollectionsSafe(localVars);
+      const collectionMap = new Map();
+      for (const c of collections) {
+        if (c && c.id) collectionMap.set(c.id, c);
+      }
+
+      const parsedMode = parseSelectedMode(options.variableMode, collectionMap);
+      if (parsedMode && !parsedMode.isAuto) {
+        const targetModesToApply = [];
+        if (parsedMode.colId && parsedMode.modeId) {
+          targetModesToApply.push({ colId: parsedMode.colId, modeId: parsedMode.modeId });
+        }
+        if (parsedMode.modeName) {
+          for (const [cId, col] of collectionMap.entries()) {
+            if (col && col.modes && cId !== parsedMode.colId) {
+              const match = col.modes.find((m) => m.name && m.name.toLowerCase() === parsedMode.modeName.toLowerCase());
+              if (match) {
+                targetModesToApply.push({ colId: cId, modeId: match.modeId || match.id });
+              }
+            }
+          }
+        }
+
+        if (targetModesToApply.length > 0) {
+          for (const selNode of selection) {
+            if (selNode && typeof selNode.setExplicitVariableMode === "function") {
+              for (const tm of targetModesToApply) {
+                try {
+                  selNode.setExplicitVariableMode(tm.colId, tm.modeId);
+                } catch (_) { }
+              }
+            }
+          }
+          for (const n of nodes) {
+            if (n && typeof n.setExplicitVariableMode === "function") {
+              for (const tm of targetModesToApply) {
+                try {
+                  n.setExplicitVariableMode(tm.colId, tm.modeId);
+                } catch (_) { }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[applyClosestStylesToSelection] Error setting explicit variable mode:", e);
+    }
+  }
+
   return summary;
 }
 
@@ -1521,14 +1724,14 @@ async function loadUserSettings() {
         variableMode: saved.variableMode || "AUTO",
       };
     }
-  } catch (_) {}
+  } catch (_) { }
   return { ignoreInstances: true, ignoreShapes: false, variableMode: "AUTO" };
 }
 
 async function saveUserSettings(settings) {
   try {
     await figma.clientStorage.setAsync(SETTINGS_KEY, settings);
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // ==========================================
