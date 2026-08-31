@@ -1106,9 +1106,9 @@ class FastStyleManager {
 // ==========================================
 // 5. NODE TRAVERSAL & HELPERS
 // ==========================================
-function isInsideInstance(node) {
+function isInsideInstance(node, stopAtNode = null) {
   let curr = node;
-  while (curr && curr.type !== "PAGE" && curr.type !== "DOCUMENT") {
+  while (curr && curr !== stopAtNode && curr.type !== "PAGE" && curr.type !== "DOCUMENT") {
     if (curr.type === "INSTANCE") return true;
     curr = curr.parent;
   }
@@ -1135,21 +1135,21 @@ function collectEligibleNodes(selection, ignoreInstances = false, ignoreShapes =
     const root = selection[i];
     if (!root) continue;
 
-    if (ignoreInstances && isInsideInstance(root)) {
+    // If "Ignore component instances" is enabled and the user selected an entire Component Instance,
+    // skip this instance and its children.
+    if (ignoreInstances && root.type === "INSTANCE") {
       continue;
     }
 
     if (isEligible(root)) {
-      if (!ignoreInstances || !isInsideInstance(root)) {
-        addNode(root);
-      }
+      addNode(root);
     }
 
     if (typeof root.findAll === "function") {
       const found = root.findAll(n => isEligible(n));
       for (let j = 0; j < found.length; j++) {
         const node = found[j];
-        if (ignoreInstances && isInsideInstance(node)) {
+        if (ignoreInstances && isInsideInstance(node, root)) {
           continue;
         }
         addNode(node);
