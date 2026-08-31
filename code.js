@@ -1794,30 +1794,7 @@ async function broadcastDiscoveredStyles(forceRefresh = false) {
     getAllVariableCollectionsSafe(localVars),
   ]);
 
-  const allItems = [...textStyles, ...colorStyles, ...colorVars];
-  const uniqueFolderPaths = new Set();
-  const varFolderPaths = new Set();
-  const varFoldersByColId = new Map();
-
-  for (const item of allItems) {
-    if (item.hasFolders && item.folderPath) {
-      uniqueFolderPaths.add(item.folderPath);
-    }
-  }
-
-  for (const v of colorVars) {
-    if (v.hasFolders && v.folderPath) {
-      varFolderPaths.add(v.folderPath);
-      const colId = v.collectionId || "default";
-      if (!varFoldersByColId.has(colId)) {
-        varFoldersByColId.set(colId, new Set());
-      }
-      varFoldersByColId.get(colId).add(v.folderPath);
-    }
-  }
-
   const availableModes = [];
-  const uniqueNamesSet = new Set();
   const structuredCollections = [];
 
   for (const col of collections) {
@@ -1835,16 +1812,13 @@ async function broadcastDiscoveredStyles(forceRefresh = false) {
             id: m.modeId,
             name: m.name,
           });
-          uniqueNamesSet.add(m.name);
         }
       }
-      const colFolders = Array.from(varFoldersByColId.get(col.id) || []);
       structuredCollections.push({
         id: col.id,
         name: col.name,
         defaultModeId: col.defaultModeId,
         modes: colModes,
-        folders: colFolders,
       });
     }
   }
@@ -1853,12 +1827,8 @@ async function broadcastDiscoveredStyles(forceRefresh = false) {
     type: "styles-detected",
     textCount: textStyles.length,
     colorCount: colorStyles.length + colorVars.length,
-    folderCount: uniqueFolderPaths.size,
-    variableFolderCount: varFolderPaths.size,
-    variableFolders: Array.from(varFolderPaths),
     modes: availableModes,
     collections: structuredCollections,
-    uniqueModeNames: Array.from(uniqueNamesSet),
   });
 }
 
