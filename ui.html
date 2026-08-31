@@ -449,10 +449,20 @@
       flex-shrink: 0;
     }
 
-    .custom-select {
-      width: auto;
+    .select-wrapper {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
       max-width: 65%;
-      padding: 5px 8px;
+      min-width: 0;
+    }
+
+    .custom-select {
+      width: 100%;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      padding: 5px 22px 5px 8px;
       font-size: 11px;
       background: var(--surface);
       color: var(--text);
@@ -462,10 +472,40 @@
       cursor: pointer;
       font-family: inherit;
       text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .custom-select:hover {
+      border-color: var(--text-secondary);
     }
 
     .custom-select:focus {
       border-color: var(--primary);
+    }
+
+    .select-icon {
+      position: absolute;
+      right: 7px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      transition: color 0.15s ease;
+    }
+
+    .select-icon svg {
+      width: 8px;
+      height: 5px;
+      display: block;
+    }
+
+    .select-wrapper:hover .select-icon {
+      color: var(--text);
     }
   </style>
 </head>
@@ -503,9 +543,16 @@
   <div class="options-group">
     <div class="select-container" id="modeSelectContainer" style="display: none;">
       <label class="select-label" for="selVariableMode">Variable Mode:</label>
-      <select class="custom-select" id="selVariableMode">
-        <option value="AUTO">Auto (Default)</option>
-      </select>
+      <div class="select-wrapper">
+        <select class="custom-select" id="selVariableMode">
+          <option value="AUTO">Auto (Default)</option>
+        </select>
+        <div class="select-icon">
+          <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 1L5 5L9 1" />
+          </svg>
+        </div>
+      </div>
     </div>
 
     <label class="checkbox-container">
@@ -680,21 +727,22 @@
       parent.postMessage({ pluginMessage: { type: "select-node", nodeId } }, "*");
     }
 
-    function renderLogList() {
-      logList.innerHTML = "";
-      if (!lastSummary) return;
+    const BATCH_SIZE = 50;
+    let currentRenderedIndex = 0;
+    let currentRenderList = [];
 
-      if (currentTab === "updated") {
-        skippedHeader.style.display = "none";
-        const list = lastSummary.appliedDetails || [];
-        if (list.length === 0) {
-          logList.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 12px; font-size: 11px;">No layers were updated in selection.</div>`;
-          return;
-        }
+    function renderNextBatch() {
+      if (!currentRenderList || currentRenderedIndex >= currentRenderList.length) return;
 
-        list.forEach((d) => {
-          const item = document.createElement("div");
-          item.className = "log-item clickable";
+      const fragment = document.createDocumentFragment();
+      const endIndex = Math.min(currentRenderedIndex + BATCH_SIZE, currentRenderList.length);
+
+      for (let i = currentRenderedIndex; i < endIndex; i++) {
+        const d = currentRenderList[i];
+        const item = document.createElement("div");
+        item.className = "log-item clickable";
+
+        if (currentTab === "updated") {
           item.title = `Click to focus "${d.layer}" on canvas`;
           item.onclick = () => selectSingleNode(d.id);
 
@@ -709,20 +757,7 @@
             </div>
             <button class="btn-icon-focus" title="Focus on canvas">${FOCUS_ICON_SVG}</button>
           `;
-          logList.appendChild(item);
-        });
-      } else {
-        // Skipped Tab
-        skippedHeader.style.display = "flex";
-        const list = lastSummary.skippedDetails || [];
-        if (list.length === 0) {
-          logList.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 12px; font-size: 11px;">No layers were skipped.</div>`;
-          return;
-        }
-
-        list.forEach((d) => {
-          const item = document.createElement("div");
-          item.className = "log-item clickable";
+        } else {
           item.title = `Click to focus skipped "${d.layer}" on canvas`;
           item.onclick = () => selectSingleNode(d.id);
 
@@ -740,9 +775,62 @@
             </div>
             <button class="btn-icon-focus" title="Focus on canvas">${FOCUS_ICON_SVG}</button>
           `;
-          logList.appendChild(item);
-        });
+        }
+
+        fragment.appendChild(item);
       }
+
+      currentRenderedIndex = endIndex;
+      logList.appendChild(fragment);
+
+      const existingMore = document.getElementById("logListMoreBtn");
+      if (existingMore) existingMore.remove();
+
+      if (currentRenderedIndex < currentRenderList.length) {
+        const remaining = currentRenderList.length - currentRenderedIndex;
+        const moreBtn = document.createElement("button");
+        moreBtn.id = "logListMoreBtn";
+        moreBtn.className = "btn-sm-action";
+        moreBtn.style.margin = "8px auto";
+        moreBtn.style.display = "block";
+        moreBtn.textContent = `Load more (${remaining} remaining)...`;
+        moreBtn.onclick = () => renderNextBatch();
+        logList.appendChild(moreBtn);
+      }
+    }
+
+    const logContainer = document.getElementById("logContainer");
+    if (logContainer) {
+      logContainer.addEventListener("scroll", () => {
+        if (logContainer.scrollTop + logContainer.clientHeight >= logContainer.scrollHeight - 60) {
+          renderNextBatch();
+        }
+      });
+    }
+
+    function renderLogList() {
+      logList.innerHTML = "";
+      currentRenderedIndex = 0;
+      if (!lastSummary) return;
+
+      if (currentTab === "updated") {
+        skippedHeader.style.display = "none";
+        currentRenderList = lastSummary.appliedDetails || [];
+        if (currentRenderList.length === 0) {
+          logList.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 12px; font-size: 11px;">No layers were updated in selection.</div>`;
+          return;
+        }
+      } else {
+        // Skipped Tab
+        skippedHeader.style.display = "flex";
+        currentRenderList = lastSummary.skippedDetails || [];
+        if (currentRenderList.length === 0) {
+          logList.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 12px; font-size: 11px;">No layers were skipped.</div>`;
+          return;
+        }
+      }
+
+      renderNextBatch();
 
       if (lastSummary.errors && lastSummary.errors.length > 0) {
         const errorSection = document.createElement("div");
@@ -868,17 +956,28 @@
       }
 
       if (msg.type === "process-complete") {
+        idleState.style.display = "none";
+        statsState.style.display = "block";
         btnRun.disabled = false;
         btnRun.textContent = "Update Styles";
 
-        const { summary } = msg;
+        const summary = msg.summary || {
+          totalInspected: 0,
+          totalUpdated: 0,
+          totalSkipped: 0,
+          textUpdated: 0,
+          colorUpdated: 0,
+          appliedDetails: [],
+          skippedDetails: [],
+          errors: [],
+        };
         lastSummary = summary;
 
-        statInspected.textContent = summary.totalInspected;
-        statUpdated.textContent = summary.totalUpdated;
+        statInspected.textContent = summary.totalInspected || 0;
+        statUpdated.textContent = summary.totalUpdated || 0;
         statTextUpdated.textContent = summary.textUpdated || 0;
         statColorUpdated.textContent = summary.colorUpdated || 0;
-        statSkipped.textContent = summary.totalSkipped;
+        statSkipped.textContent = summary.totalSkipped || 0;
 
         tabCountUpdated.textContent = (summary.appliedDetails && summary.appliedDetails.length) || summary.totalUpdated || 0;
         tabCountSkipped.textContent = (summary.skippedDetails && summary.skippedDetails.length) || summary.totalSkipped || 0;
@@ -894,7 +993,9 @@
           tabSkipped.classList.remove("active");
         }
 
-        renderLogList();
+        setTimeout(() => {
+          renderLogList();
+        }, 0);
       }
     };
   </script>

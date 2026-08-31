@@ -1178,6 +1178,13 @@ async function applyRangeStyleAsync(textNode, start, end, style) {
   if (style && style.fontName) {
     await preloadFonts([style.fontName]);
   }
+  try {
+    const currentRangeFont = textNode.getRangeFontName(start, end);
+    if (currentRangeFont && currentRangeFont !== figma.mixed) {
+      await preloadFonts([currentRangeFont]);
+    }
+  } catch (_) { }
+
   if (typeof textNode.setRangeTextStyleIdAsync === "function") {
     await textNode.setRangeTextStyleIdAsync(start, end, style.id);
   } else {
@@ -1272,6 +1279,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
     colorUpdated: 0,
     totalSkipped: 0,
     appliedDetails: [],
+    skippedDetails: [],
     errors: [],
   };
 
@@ -1335,6 +1343,7 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
       let updatedThisNode = false;
       let matchedTextStyle = null;
       let existingTextStyle = null;
+      const matchedStylesByRange = [];
 
       // Handle Text Styles (Typography)
       if (node.type === "TEXT") {
@@ -1367,17 +1376,20 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
             const style = await manager.getResolvedStyleAsync(closest);
 
             if (style) {
-              await applyNodeStyleAsync(node, style);
-              updatedThisNode = true;
-              summary.textUpdated++;
-              summary.appliedDetails.push({
-                id: node.id,
-                layer: node.name,
-                target: closest.name,
-                folderPath: closest.folderPath || "",
-                leafName: closest.leafName || closest.name,
-                type: "text",
-              });
+              const isAlreadyApplied = node.textStyleId === style.id;
+              if (!isAlreadyApplied) {
+                await applyNodeStyleAsync(node, style);
+                updatedThisNode = true;
+                summary.textUpdated++;
+                summary.appliedDetails.push({
+                  id: node.id,
+                  layer: node.name,
+                  target: closest.name,
+                  folderPath: closest.folderPath || "",
+                  leafName: closest.leafName || closest.name,
+                  type: "text",
+                });
+              }
             }
           } else {
             const segments = node.getStyledTextSegments([
@@ -1406,20 +1418,23 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
               };
 
               const closest = findBestMatchingStyle(segSpec, localStyles);
-              segment._matchedTextStyle = closest;
+              matchedStylesByRange.push({ start: segment.start, end: segment.end, style: closest });
               const style = await manager.getResolvedStyleAsync(closest);
 
               if (style) {
-                await applyRangeStyleAsync(node, segment.start, segment.end, style);
-                updatedThisNode = true;
-                summary.appliedDetails.push({
-                  id: node.id,
-                  layer: node.name,
-                  target: closest.name,
-                  folderPath: closest.folderPath || "",
-                  leafName: closest.leafName || closest.name,
-                  type: "text",
-                });
+                const isAlreadyApplied = segment.textStyleId === style.id;
+                if (!isAlreadyApplied) {
+                  await applyRangeStyleAsync(node, segment.start, segment.end, style);
+                  updatedThisNode = true;
+                  summary.appliedDetails.push({
+                    id: node.id,
+                    layer: node.name,
+                    target: closest.name,
+                    folderPath: closest.folderPath || "",
+                    leafName: closest.leafName || closest.name,
+                    type: "text",
+                  });
+                }
               }
             }
             if (updatedThisNode) {
@@ -1506,7 +1521,11 @@ async function applyClosestStylesToSelection(options = { ignoreInstances: true, 
                   existingVariable = await getStyleSafe(boundVar.id);
                 }
 
-                let segTextStyle = seg._matchedTextStyle;
+                let segTextStyle = null;
+                const matchedRange = matchedStylesByRange.find((r) => r.start <= seg.start && r.end >= seg.end);
+                if (matchedRange && matchedRange.style) {
+                  segTextStyle = matchedRange.style;
+                }
                 if (!segTextStyle && typeof seg.textStyleId === "string" && seg.textStyleId.length > 0) {
                   segTextStyle = await getStyleSafe(seg.textStyleId);
                 }
@@ -1920,21 +1939,39 @@ figma.ui.onmessage = async (msg) => {
     await saveUserSettings(options);
 
     figma.ui.postMessage({ type: "process-start" });
-    const summary = await applyClosestStylesToSelection(options);
+    try {
+      const summary = await applyClosestStylesToSelection(options);
 
-    if (summary.totalUpdated > 0) {
-      const parts = [];
-      if (summary.textUpdated > 0) parts.push(`${summary.textUpdated} text`);
-      if (summary.colorUpdated > 0) parts.push(`${summary.colorUpdated} color`);
-      const details = parts.length > 0 ? ` (${parts.join(", ")})` : "";
-      figma.notify(`⚡ Updated ${summary.totalUpdated} layer(s)${details} with local styles!`);
-    } else if (summary.errors.length > 0) {
-      figma.notify("⚠️ Process finished with warnings. Check plugin window for logs.");
-    } else {
-      figma.notify("ℹ️ No layers needed updates.");
+      if (summary.totalUpdated > 0) {
+        const parts = [];
+        if (summary.textUpdated > 0) parts.push(`${summary.textUpdated} text`);
+        if (summary.colorUpdated > 0) parts.push(`${summary.colorUpdated} color`);
+        const details = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+        figma.notify(`⚡ Updated ${summary.totalUpdated} layer(s)${details} with local styles!`);
+      } else if (summary.errors.length > 0) {
+        figma.notify("⚠️ Process finished with warnings. Check plugin window for logs.");
+      } else {
+        figma.notify("ℹ️ No layers needed updates.");
+      }
+
+      figma.ui.postMessage({ type: "process-complete", summary });
+    } catch (err) {
+      console.error("[run-replace-styles] Unexpected error:", err);
+      figma.notify(`⚠️ An error occurred during processing: ${err?.message || err}`);
+      figma.ui.postMessage({
+        type: "process-complete",
+        summary: {
+          totalInspected: 0,
+          totalUpdated: 0,
+          totalSkipped: 0,
+          textUpdated: 0,
+          colorUpdated: 0,
+          appliedDetails: [],
+          skippedDetails: [],
+          errors: [err?.message || String(err)],
+        },
+      });
     }
-
-    figma.ui.postMessage({ type: "process-complete", summary });
   }
 
   if (msg.type === "cancel") {
